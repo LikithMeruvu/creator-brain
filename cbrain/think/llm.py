@@ -132,6 +132,7 @@ class _RateGate:
 _GATES: dict[str, _RateGate] = {}
 _GATES_LOCK = threading.Lock()
 MAX_RATE_LIMIT_ROUNDS = 60    # 429s that don't count as attempts (each one rests a model first)
+MAX_MODEL_REST_SECONDS = 900  # never trust a huge retry-after blindly: rest, then probe again
 MAX_MODEL_WAIT_SECONDS = 300 # longer than this (e.g. a daily cap): give the job back instead of holding a thread
 
 
@@ -220,7 +221,7 @@ class LLMClient:
                     if self._gated and status == 429 and rate_limited < MAX_RATE_LIMIT_ROUNDS:
                         # quota, not failure: rest this model for its full wait (hours for a daily cap) and
                         # move on without spending an attempt; other processes may share the same org quota
-                        full = _parse_retry_after(resp_headers.get("retry-after"), cap=86400) or 30.0
+                        full = _parse_retry_after(resp_headers.get("retry-after"), cap=MAX_MODEL_REST_SECONDS) or 30.0
                         _gate(model).block(full)
                         rate_limited += 1
                         log.info("Groq limit on %s; it rests %.0fs while other models continue", model, full)
