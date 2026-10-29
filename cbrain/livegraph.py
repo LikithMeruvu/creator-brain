@@ -160,11 +160,15 @@ def build_graph(root: Path, cache: dict | None = None) -> dict:
     counts: dict[str, int] = {}
     for r in sorted(records, key=lambda r: r["created"]):
         deg = degree.get(r["id"], 0)
-        size = 3 + min(deg, 60) ** 0.6 * 1.6 + min(r["claims"], 100) ** 0.5 * 0.8
-        if r["group"] == "creator":
-            size += 8
-        elif r["group"] == "video":
-            size = 2.5 + min(deg, 20) ** 0.5
+        g = r["group"]
+        if g == "creator":
+            size = 15 + min(deg, 400) ** 0.35
+        elif g == "topic":   # grows with evidence, capped so big topics don't swallow the picture
+            size = min(4 + min(r["claims"], 400) ** 0.5 * 0.55 + min(deg, 80) ** 0.4, 15)
+        elif g == "video":
+            size = 2 + min(deg, 20) ** 0.4
+        else:                # home, updates, outputs: small markers
+            size = 4
         n = {"id": r["id"], "label": r["label"], "group": r["group"], "creator": r["creator"],
              "size": round(size, 2), "created": round(r["created"], 3), "degree": deg}
         if r["published"]:
