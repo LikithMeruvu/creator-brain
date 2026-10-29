@@ -106,7 +106,13 @@ def extract_info(video_id: str, proxy: str | None, timeout: int, **extra) -> tup
     """Not a context manager on purpose: caller needs the live YoutubeDL for urlopen. Caller must close()."""
     ydl = yt_dlp.YoutubeDL(ydl_opts(proxy, timeout, skip_download=True, ignore_no_formats_error=True, **extra))
     try:
-        info = ydl.extract_info(WATCH_URL.format(video_id), download=False)
+        try:
+            info = ydl.extract_info(WATCH_URL.format(video_id), download=False)
+        except yt_dlp.utils.DownloadError as e:
+            if "Requested format is not available" not in str(e):
+                raise
+            # captions need no media format: take the extractor's raw result and skip format selection
+            info = ydl.extract_info(WATCH_URL.format(video_id), download=False, process=False)
     except Exception as e:
         ydl.close()
         raise classify(e, proxied=bool(proxy)) from e
