@@ -131,7 +131,8 @@ class _RateGate:
 
 _GATES: dict[str, _RateGate] = {}
 _GATES_LOCK = threading.Lock()
-MAX_MODEL_WAIT_SECONDS = 300  # longer than this (e.g. a daily cap): give the job back instead of holding a thread
+MAX_RATE_LIMIT_ROUNDS = 60    # 429s that don't count as attempts (each one rests a model first)
+MAX_MODEL_WAIT_SECONDS = 300 # longer than this (e.g. a daily cap): give the job back instead of holding a thread
 
 
 def _gate(model: str) -> _RateGate:
@@ -192,10 +193,11 @@ class LLMClient:
         }
         last = "unknown error"
         est_tokens = (len(system) + len(user)) // CHARS_PER_TOKEN + min(max_tokens, 800)  # answers are ~200-800
-        for attempt in range(self.max_retries + 1):
+        attempt, rate_limited = 0, 0
+        while attempt <= self.max_retries:
             retry_after: float | None = None
             status = 0
-            model = self._pick_model(est_tokens)
+            model = self._pick_model(est_tokens)  # raises RateLimited when every model is out for long
             body = _chat_body(model, system, user, max_tokens)
             try:
                 status, resp_headers, raw = self._transport(GROQ_CHAT_URL, headers, body, REQUEST_TIMEOUT_SECONDS)
@@ -215,17 +217,20 @@ class LLMClient:
                     if status not in RETRY_STATUSES and status < 500:
                         raise LLMError(f"Groq request failed ({last})")
                     retry_after = _parse_retry_after(resp_headers.get("retry-after"))
-                    if self._gated and status == 429:
-                        # park this model for its full wait (could be hours for a daily cap); others keep going
+                    if self._gated and status == 429 and rate_limited < MAX_RATE_LIMIT_ROUNDS:
+                        # quota, not failure: rest this model for its full wait (hours for a daily cap) and
+                        # move on without spending an attempt; other processes may share the same org quota
                         full = _parse_retry_after(resp_headers.get("retry-after"), cap=86400) or 30.0
                         _gate(model).block(full)
+                        rate_limited += 1
                         log.info("Groq limit on %s; it rests %.0fs while other models continue", model, full)
                         continue
             if attempt >= self.max_retries:
                 break
             delay = retry_after if retry_after is not None else min(
                 BACKOFF_CAP_SECONDS, BACKOFF_BASE_SECONDS * 2 ** attempt + random.uniform(0, 1))
-            log.warning("Groq call failed (%s); retry %d/%d in %.1fs", last, attempt + 1, self.max_retries, delay)
+            attempt += 1
+            log.warning("Groq call failed (%s); retry %d/%d in %.1fs", last, attempt, self.max_retries, delay)
             self._sleep(delay)
         raise LLMError(f"Groq request failed after {self.max_retries + 1} attempts ({last})")
 
