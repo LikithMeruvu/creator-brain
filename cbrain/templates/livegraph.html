@@ -74,6 +74,7 @@ const canvas=$("c"),ctx=canvas.getContext("2d");
 if(!window.d3){$("msg").style.display="flex";$("msg").textContent="Could not load d3 from cdnjs (offline?).";return;}
 
 let W=0,H=0,DPR=1,T=d3.zoomIdentity;
+const STILL=new URLSearchParams(location.search).has("still"); // ?still: no pop-in, auto-fit (screenshots)
 const nodes=[],byId=new Map(),linkMap=new Map();let linkArr=[];
 const adj=new Map();
 let hover=null,pinned=null,query="",creatorSel="",colorMode="type",replaying=false,hiddenGroups=new Set();
@@ -114,7 +115,7 @@ function applyData(ns,ls,opts){
       const nb=firstNeighbour(d.id,ls);
       if(nb){n.x=nb.x+(Math.random()-.5)*30;n.y=nb.y+(Math.random()-.5)*30;}
       else{const a=Math.random()*6.283,r=40+Math.random()*(opts.initial?260:60);n.x=Math.cos(a)*r;n.y=Math.sin(a)*r;}
-      n.born=now+(opts.initial?Math.min(stagger++*4,2500):0);
+      n.born=STILL?-1e9:now+(opts.initial?Math.min(stagger++*4,2500):0);
       byId.set(d.id,n);nodes.push(n);
     }
     n.label=d.label;n.group=d.group;n.creator=d.creator;n.size=d.size;n.created=d.created;
@@ -125,7 +126,7 @@ function applyData(ns,ls,opts){
   for(const l of ls){
     if(!byId.has(l.source)||!byId.has(l.target))continue;
     const k=l.source+"\u0000"+l.target;seen.add(k);
-    if(!linkMap.has(k)){linkMap.set(k,{source:l.source,target:l.target,born:now+(opts.initial?600:0)});changed=true;}
+    if(!linkMap.has(k)){linkMap.set(k,{source:l.source,target:l.target,born:STILL?-1e9:now+(opts.initial?600:0)});changed=true;}
   }
   for(const k of [...linkMap.keys()])if(!seen.has(k)){linkMap.delete(k);changed=true;}
   if(changed||opts.force){
@@ -301,6 +302,13 @@ async function poll(first){
   }catch(e){$("dot").classList.add("off");}
 }
 poll(true);setInterval(()=>poll(false),2000);
+function fitAll(){
+  const on=nodes.filter(n=>n.x!=null);if(!on.length)return;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const n of on){x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x);y1=Math.max(y1,n.y);}
+  const s=Math.min(W/(x1-x0+120),H/(y1-y0+160),2);
+  sel.call(zoom.transform,d3.zoomIdentity.translate(W/2-(x0+x1)/2*s,H/2+20-(y0+y1)/2*s).scale(s));
+}
+if(STILL)setTimeout(fitAll,6000);
 
 /* ---- replay ---- */
 let rp=null;
