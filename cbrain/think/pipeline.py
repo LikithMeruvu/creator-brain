@@ -19,7 +19,7 @@ from ..paths import VaultPaths
 from .changes import detect_changes
 from .extract import (agent_batch_path, agent_claims_path, archive_agent_files, extract_claims,
                       ingest_agent_batch, write_agent_batch)
-from .llm import LLMClient
+from .llm import LLMClient, RateLimited
 from .topics import TopicRegistry
 from .verify import normalize, verify_claims
 
@@ -185,6 +185,11 @@ class Thinker:
 
     def _fail(self, row: VideoRow, err: Exception, stats: dict) -> None:
         msg = f"{type(err).__name__}: {err}"
+        if isinstance(err, RateLimited):  # quota, not a broken video: retry later without using up attempts
+            self.store.defer(row.id, err.retry_in, back_to=JobState.WRITTEN)
+            stats.setdefault("rate_limited", 0)
+            stats["rate_limited"] += 1
+            return
         log.warning("thinker failed on %s: %s", row.id, msg)
         self.store.fail(row.id, msg, back_to=JobState.WRITTEN, max_attempts=self.settings.max_attempts)
         stats["failed"] += 1

@@ -84,38 +84,67 @@ class _RateGate:
         self.events: deque[tuple[float, int]] = deque()
         self.learned_tpm: int | None = None
         self.blocked_until = 0.0
+        self.remaining: int | None = None   # Groq's own count from the last response
+        self.reset_at = 0.0
+        self.reserved = 0                   # tokens handed out since that response
 
-    def wait(self, tokens: int, default_tpm: int, sleep: Callable[[float], None]) -> None:
-        while True:
-            with self.lock:
-                now = time.time()
-                while self.events and now - self.events[0][0] > 60:
-                    self.events.popleft()
-                limit = self.learned_tpm or default_tpm
-                used = sum(t for _, t in self.events)
-                if now < self.blocked_until:
-                    delay = self.blocked_until - now
-                elif self.events and used + tokens > limit * 0.9:
-                    delay = 60 - (now - self.events[0][0]) + 0.5
-                else:
-                    self.events.append((now, tokens))
-                    return
-            sleep(max(0.5, delay))
+    def take(self, tokens: int, default_tpm: int) -> float:
+        """Reserve budget and return 0, or return how many seconds until this model has room.
+        Prefers Groq's own x-ratelimit-remaining-tokens over our estimate once a response has reported it."""
+        with self.lock:
+            now = time.time()
+            if now < self.blocked_until:
+                return self.blocked_until - now
+            if self.remaining is not None and now < self.reset_at:
+                if self.remaining - self.reserved < tokens:
+                    return min(self.reset_at - now, 60.0) + 0.2
+                self.reserved += tokens
+                return 0.0
+            while self.events and now - self.events[0][0] > 60:
+                self.events.popleft()
+            limit = self.learned_tpm or default_tpm
+            used = sum(t for _, t in self.events)
+            if now < self.blocked_until:
+                return self.blocked_until - now
+            if self.events and used + tokens > limit * 0.9:
+                return 60 - (now - self.events[0][0]) + 0.5
+            self.events.append((now, tokens))
+            return 0.0
 
     def learn(self, headers: dict) -> None:
         try:
             limit = int(headers.get("x-ratelimit-limit-tokens", "") or 0)
+            remaining = headers.get("x-ratelimit-remaining-tokens")
+            reset = _parse_duration(headers.get("x-ratelimit-reset-tokens"))
         except ValueError:
             return
-        if limit > 0:
-            self.learned_tpm = limit
+        with self.lock:
+            if limit > 0:
+                self.learned_tpm = limit
+            if remaining is not None and reset is not None:
+                self.remaining, self.reset_at, self.reserved = int(remaining), time.time() + reset, 0
 
     def block(self, seconds: float) -> None:
         with self.lock:
             self.blocked_until = max(self.blocked_until, time.time() + seconds)
 
 
-_GATE = _RateGate()
+_GATES: dict[str, _RateGate] = {}
+_GATES_LOCK = threading.Lock()
+MAX_MODEL_WAIT_SECONDS = 300  # longer than this (e.g. a daily cap): give the job back instead of holding a thread
+
+
+def _gate(model: str) -> _RateGate:
+    with _GATES_LOCK:
+        return _GATES.setdefault(model, _RateGate())
+
+
+class RateLimited(LLMError):
+    """Every model is out of quota for a while; the job should be retried later without counting an attempt."""
+
+    def __init__(self, retry_in: float):
+        super().__init__(f"all Groq models rate-limited; retry in {retry_in:.0f}s")
+        self.retry_in = retry_in
 
 
 class LLMClient:
@@ -123,9 +152,27 @@ class LLMClient:
                  sleep: Callable[[float], None] = time.sleep, max_retries: int = MAX_RETRIES):
         self.settings = settings
         self._transport = transport or _urllib_transport
-        self._gate = None if transport else _GATE  # injected test transports skip the shared budget
+        self._gated = transport is None  # injected test transports skip the shared budget
         self._sleep = sleep
         self.max_retries = max_retries
+        extra = [m.strip() for m in (settings.extract_fallback_models or "").split(",")]
+        self.models = [settings.extract_model] + [m for m in extra if m and m != settings.extract_model]
+
+    def _pick_model(self, tokens: int) -> str:
+        """Rotate across models so each one's separate free-tier budget is used; wait for the soonest one."""
+        if not self._gated:
+            return self.models[0]
+        while True:
+            waits = []
+            for m in self.models:
+                delay = _gate(m).take(tokens, self.settings.llm_tpm)
+                if delay == 0:
+                    return m
+                waits.append(delay)
+            soonest = min(waits)
+            if soonest > MAX_MODEL_WAIT_SECONDS:
+                raise RateLimited(soonest)
+            self._sleep(max(0.5, min(soonest, 10)))
 
     def __repr__(self) -> str:  # never show the key
         return f"LLMClient(model={self.settings.extract_model!r}, available={self.available()})"
@@ -137,17 +184,6 @@ class LLMClient:
         """One chat completion in JSON mode. Retries 429/5xx/network/bad-JSON with backoff (honours retry-after)."""
         if not self.available():
             raise NoLLM("no Groq API key configured")
-        model = self.settings.extract_model
-        payload: dict = {
-            "model": model,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            "temperature": 0.1,
-            "max_completion_tokens": max_tokens,
-            "response_format": {"type": "json_object"},
-        }
-        if "gpt-oss" in model:
-            payload["reasoning_effort"] = "low"
-        body = json.dumps(payload).encode("utf-8")
         headers = {
             "Authorization": f"Bearer {self.settings.groq_api_key.strip()}",
             "Content-Type": "application/json",
@@ -155,15 +191,16 @@ class LLMClient:
             "User-Agent": "cbrain/0.1 (+creator-brain)",
         }
         last = "unknown error"
-        est_tokens = (len(system) + len(user)) // CHARS_PER_TOKEN + min(max_tokens, 1500)
+        est_tokens = (len(system) + len(user)) // CHARS_PER_TOKEN + min(max_tokens, 800)  # answers are ~200-800
         for attempt in range(self.max_retries + 1):
             retry_after: float | None = None
-            if self._gate:
-                self._gate.wait(est_tokens, self.settings.llm_tpm, self._sleep)
+            status = 0
+            model = self._pick_model(est_tokens)
+            body = _chat_body(model, system, user, max_tokens)
             try:
                 status, resp_headers, raw = self._transport(GROQ_CHAT_URL, headers, body, REQUEST_TIMEOUT_SECONDS)
-                if self._gate:
-                    self._gate.learn(resp_headers)
+                if self._gated:
+                    _gate(model).learn(resp_headers)
             except (urllib.error.URLError, TimeoutError, OSError, ConnectionError) as e:
                 status, resp_headers, raw = 0, {}, b""
                 last = f"network error: {type(e).__name__}"
@@ -178,15 +215,17 @@ class LLMClient:
                     if status not in RETRY_STATUSES and status < 500:
                         raise LLMError(f"Groq request failed ({last})")
                     retry_after = _parse_retry_after(resp_headers.get("retry-after"))
+                    if self._gated and status == 429:
+                        # park this model for its full wait (could be hours for a daily cap); others keep going
+                        full = _parse_retry_after(resp_headers.get("retry-after"), cap=86400) or 30.0
+                        _gate(model).block(full)
+                        log.info("Groq limit on %s; it rests %.0fs while other models continue", model, full)
+                        continue
             if attempt >= self.max_retries:
                 break
             delay = retry_after if retry_after is not None else min(
                 BACKOFF_CAP_SECONDS, BACKOFF_BASE_SECONDS * 2 ** attempt + random.uniform(0, 1))
-            if self._gate and status == 429:
-                self._gate.block(delay)  # every thread waits, not just this one
-                log.info("Groq rate limit reached; all extraction threads wait %.1fs", delay)
-            else:
-                log.warning("Groq call failed (%s); retry %d/%d in %.1fs", last, attempt + 1, self.max_retries, delay)
+            log.warning("Groq call failed (%s); retry %d/%d in %.1fs", last, attempt + 1, self.max_retries, delay)
             self._sleep(delay)
         raise LLMError(f"Groq request failed after {self.max_retries + 1} attempts ({last})")
 
@@ -212,13 +251,49 @@ class LLMClient:
         return (in_tokens * PRICE_PER_M_INPUT_TOKENS_USD + out_tokens * PRICE_PER_M_OUTPUT_TOKENS_USD) / 1_000_000
 
 
-def _parse_retry_after(value: str | None) -> float | None:
+def _parse_retry_after(value: str | None, cap: float = RETRY_AFTER_CAP_SECONDS) -> float | None:
     if not value:
         return None
     try:
-        return max(0.0, min(float(value), RETRY_AFTER_CAP_SECONDS))
+        return max(0.0, min(float(value), cap))
     except ValueError:
         return None
+
+
+def _parse_duration(value: str | None) -> float | None:
+    """Groq reset headers look like '7.66s', '1m2.5s' or '120ms'."""
+    if not value:
+        return None
+    total, num = 0.0, ""
+    s = value.strip()
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch.isdigit() or ch == ".":
+            num += ch
+        elif s.startswith("ms", i):
+            total += float(num or 0) / 1000; num = ""; i += 1
+        elif ch in "hms":
+            total += float(num or 0) * {"h": 3600, "m": 60, "s": 1}[ch]; num = ""
+        else:
+            raise ValueError(value)
+        i += 1
+    return total + (float(num) if num else 0.0)
+
+
+def _chat_body(model: str, system: str, user: str, max_tokens: int) -> bytes:
+    payload: dict = {
+        "model": model,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "temperature": 0.1,
+        "max_completion_tokens": max_tokens,
+        "response_format": {"type": "json_object"},
+    }
+    if "gpt-oss" in model:
+        payload["reasoning_effort"] = "low"
+    elif "qwen" in model:
+        payload["reasoning_format"] = "hidden"  # keep <think> text out of the JSON answer
+    return json.dumps(payload).encode("utf-8")
 
 
 def _error_text(raw: bytes) -> str:

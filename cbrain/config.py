@@ -39,7 +39,8 @@ class Settings:
     sponsorblock: bool = True
     whisper_upgrade_top: int = 10       # re-transcribe this many top winners with Whisper for accuracy
     extract_model: str = "openai/gpt-oss-120b"
-    llm_tpm: int = 8000                 # tokens/minute budget until Groq's real limit is learned from headers
+    extract_fallback_models: str = "openai/gpt-oss-20b,qwen/qwen3.8-27b"  # rotated in: each has its own free quota
+    llm_tpm: int = 8000                # tokens/minute budget until Groq's real limit is learned from headers
     asr_model: str = "whisper-large-v3-turbo"
     vision_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
     visual: bool = False

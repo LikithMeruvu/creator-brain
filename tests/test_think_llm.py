@@ -103,3 +103,54 @@ def test_cost_estimate_monotonic_and_small():
     assert c.estimate_cost_usd(0) == 0.0
     a, b = c.estimate_cost_usd(100_000), c.estimate_cost_usd(1_000_000)
     assert 0 < a < b < 1.0  # a 1M-char (~250k token) pile of transcripts costs well under a dollar
+
+
+def test_rotates_models_and_parks_rate_limited_model(monkeypatch):
+    """A 429 on one model rests only that model; the next call moves to the next model's free quota."""
+    import cbrain.think.llm as llm_mod
+    monkeypatch.setattr(llm_mod, "_GATES", {})
+    calls = []
+
+    def transport(url, headers, body, timeout):
+        model = json.loads(body)["model"]
+        calls.append(model)
+        if model == "m1":
+            return 429, {"retry-after": "3600"}, b'{"error":{"message":"daily limit"}}'
+        return 200, {}, json.dumps({"choices": [{"message": {"content": '{"ok": true}'}}]}).encode()
+
+    s = Settings(groq_api_key="k", extract_model="m1", extract_fallback_models="m2,m3")
+    client = LLMClient(s, transport=transport, sleep=lambda _: None)
+    client._gated = True
+    assert client.complete_json("sys", "user") == {"ok": True}
+    assert calls == ["m1", "m2"]
+    assert client.complete_json("sys", "user") == {"ok": True}
+    assert calls[-1] in ("m2", "m3") and "m1" not in calls[2:]
+
+
+def test_all_models_exhausted_raises_rate_limited(monkeypatch):
+    import cbrain.think.llm as llm_mod
+    monkeypatch.setattr(llm_mod, "_GATES", {})
+    s = Settings(groq_api_key="k", extract_model="m1", extract_fallback_models="m2")
+    client = LLMClient(s, transport=lambda *a: (429, {"retry-after": "7200"}, b"{}"), sleep=lambda _: None)
+    client._gated = True
+    with pytest.raises(llm_mod.RateLimited) as e:
+        client.complete_json("sys", "user")
+    assert e.value.retry_in > 300
+
+
+def test_parse_groq_reset_durations():
+    from cbrain.think.llm import _parse_duration
+    assert _parse_duration("7.66s") == pytest.approx(7.66)
+    assert _parse_duration("1m2.5s") == pytest.approx(62.5)
+    assert _parse_duration("120ms") == pytest.approx(0.12)
+    assert _parse_duration("2h0m1s") == pytest.approx(7201)
+    assert _parse_duration(None) is None
+
+
+def test_gate_uses_server_remaining_tokens():
+    from cbrain.think.llm import _RateGate
+    g = _RateGate()
+    g.learn({"x-ratelimit-limit-tokens": "8000", "x-ratelimit-remaining-tokens": "5000",
+             "x-ratelimit-reset-tokens": "30s"})
+    assert g.take(3000, 8000) == 0
+    assert g.take(3000, 8000) > 0          # only 2000 left until reset
