@@ -11,6 +11,8 @@ and add to it. Follow these rules every time.
 - `creators/<Name>/<Name>.md` - one note per creator, with stats and their top videos.
 - `creators/<Name>/videos/` - one note per video. The full transcript, with a timestamp link after every paragraph.
 - `creators/<Name>/updates/` - what changed each time we checked for new videos.
+- `creators/<Name>/<Name> - All Videos.md` - every upload on the channel. ✅ = in the brain, ➕ = not added yet.
+  If the user's question needs a ➕ video, offer to add it with the `add_videos` tool (match words in its title).
 - `topics/` - one note per subject (for example "Protein Intake"). Lists what each creator says, newest first.
 - `outputs/` - answers and plans saved from earlier chats. Good to re-read, never the final truth.
 - `.brain/` - the engine room. Do not read or edit it by hand.
