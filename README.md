@@ -85,6 +85,8 @@ Give the agent the playbook too: copy `skills/creator-brain/` into your skills f
 | `save_output(title, markdown, sources)` | Save plans/answers into the vault (they join the graph) |
 | `suggest_creators(topic)` | Find strong channels for a topic |
 | `brain_status` · `brain_doctor(fix)` · `brain_graph` | Progress, health checks/repairs, live graph URL |
+| `next_video_to_analyse` · `submit_claims(video_id, claims)` | **Your agent reads the transcript and writes the claims**; code verifies every quote (no API key needed) |
+| `list_topics` · `merge_topics(groups)` · `rebuild_brain` · `pause_brain` / `resume_brain` | Your agent names, merges and restructures topics and notes |
 
 ## Use cases
 
@@ -114,7 +116,7 @@ flowchart LR
 |---|---|
 | Transcripts | Lane 0 = your IP, paced (~240 videos/h, under YouTube's ~300/h guest limit). More lanes through proxies (your own list, or verified free ones). Sponsor segments cut via SponsorBlock. |
 | Queue | One SQLite job per video; leases, retries with back-off, parked with a reason after 3 failures. |
-| Extraction | Groq models rotated, each with its own free quota; follows Groq's rate-limit headers; daily caps defer jobs instead of failing them. No Groq key? Your own agent extracts from `.brain/pending_extraction/`. |
+| Extraction | **Your own agent** (via `next_video_to_analyse` → `submit_claims`), plus optional Groq in the background: models rotated, each with its own free quota; follows Groq's rate-limit headers; daily caps defer jobs instead of failing them. No Groq key? Your own agent extracts from `.brain/pending_extraction/`. |
 | Accuracy | Exact-quote check with one tolerance (a single mis-heard word) — never for numbers or negations. Wrong-language transcripts are redone. |
 | Many agents | One writer lock per vault; any number of readers. |
 

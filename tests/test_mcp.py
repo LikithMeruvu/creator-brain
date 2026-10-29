@@ -8,7 +8,7 @@ from cbrain.service import Brain
 from tests.rcpt_fakes import install, seed_videos
 
 TOOLS = {"add_creator", "update_creators", "brain_status", "search_brain", "get_topic", "compare_creators",
-         "my_profile", "save_output", "suggest_creators", "brain_doctor", "add_videos", "brain_graph"}
+         "my_profile", "save_output", "suggest_creators", "brain_doctor", "add_videos", "brain_graph", "next_video_to_analyse", "submit_claims", "list_topics", "merge_topics", "rebuild_brain", "pause_brain", "resume_brain"}
 
 
 class FakeBrain:

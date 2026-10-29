@@ -6,7 +6,8 @@ description: Build, search and maintain "creator brains" — Obsidian vaults mad
 # Creator Brain — agent playbook
 
 A **brain** = one creator's videos turned into linked notes inside one shared Obsidian vault
-(default `~/CreatorBrain`). Every claim carries an exact quote that code verified against the transcript,
+(default `~/CreatorBrain`). The tool fetches and stores; **you** (the agent) read, write claims, name topics and
+keep the structure clean, while code checks every quote. Every claim carries an exact quote that code verified against the transcript,
 plus a timestamp link. Your job: answer from the brain, cite it, and keep it healthy.
 
 ## 0. Before anything
@@ -35,17 +36,40 @@ Never invent a claim, number or quote. If the brain has nothing, say so and offe
 3. Tell the user the **brain label** it returns (e.g. `jeff-nippard · recent · updated 2026-10-29 · 147 videos`)
    and offer the live view: `brain_graph` returns a localhost URL where notes pop in as they arrive.
 
-## 3. Add more of a creator's videos
+## 3. YOU build the brain: read videos and write claims
+Transcripts download by themselves. Turning them into knowledge is your job (Groq, if configured, only helps
+in the background and its free tier covers ~30-40 videos a day).
+
+Loop until `next_video_to_analyse` returns `video: null` (or until the user's request is covered — analyse the
+videos that matter for it first, e.g. pass `creator=`):
+1. `next_video_to_analyse(creator)` → read the `task`: rules, known topics and the timestamped transcript.
+2. Write up to 12 knowledge cards. Every `quote` is 6-40 words copied **exactly** (skip `>>`, `[music]`, and never
+   bridge across another speaker's interjection). `t` = the `[mm:ss]` where the quote starts.
+3. **Name topics well**: reuse a known topic when it fits; otherwise a short, broad Title Case name a coach would
+   file notes under ("Protein Intake", not "Protein Intake For Older Women In Winter").
+4. `submit_claims(video_id, claims)` → code verifies each quote; rejected ones were not word-for-word — fix and
+   resubmit only if the point matters.
+5. Tell the user progress every few videos ("analysed 12 of 260").
+
+## 4. YOU keep the brain tidy: names and structure
+After a batch of videos (or when `list_topics` shows many 1-2 claim topics):
+1. `list_topics()` → plan groups: near-duplicates and narrow sub-cases into one broad, clear name.
+2. `pause_brain()` → `merge_topics({"Protein Intake": ["Daily Protein", "Protein Timing"], ...})`.
+3. `rebuild_brain()` → clean note names, Key points, related-topic links, dashboards. Then `resume_brain()`.
+4. `brain_doctor(fix=True)`; report what changed.
+Brain names are automatic (`jeremy-ethier · recent · updated <date> · <n> videos`); never rename creator folders.
+
+## 5. Add more of a creator's videos
 Every upload is listed in `creators/<Name>/<Name> - All Videos.md` (✅ in brain, ⏳ queued, ➕ not added).
 1. `add_videos(creator, match="words in title", dry_run=True)` → show the matches.
 2. After the user agrees: same call without `dry_run`. Or `top=N` for the N most-viewed missing videos.
 
-## 4. Keep it fresh
+## 6. Keep it fresh
 - A new-video check runs by itself at most once a day on the first tool call. Force it: `update_creators()`.
 - New material shows up in `creators/<Name>/updates/<Name> - Update YYYY-MM-DD.md` (new videos, new advice,
   ⚠️ changed advice). Mention these when relevant.
 
-## 5. Maintain (when something looks wrong)
+## 7. Maintain (when something looks wrong)
 | Symptom | Fix |
 |---|---|
 | anything odd | `brain_doctor(fix=True)` — broken links, missing notes, stuck jobs, parked videos |
@@ -56,7 +80,7 @@ Every upload is listed in `creators/<Name>/<Name> - All Videos.md` (✅ in brain
 
 `pause` first for rebuild/merge/dates: they rewrite notes the worker also writes.
 
-## 6. Show the brain
+## 8. Show the brain
 - Live, animated graph in the browser: MCP `brain_graph` or CLI `brain graph` (Replay animates how it grew).
 - Obsidian: open the vault folder; graph view colours creators blue, topics green, videos grey.
 

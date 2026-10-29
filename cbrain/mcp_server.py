@@ -58,6 +58,47 @@ def create_server(get_brain: Getter) -> Any:
         return call("add_videos", creator, match=match, video_ids=video_ids, top=top, dry_run=dry_run)
 
     @mcp.tool()
+    def next_video_to_analyse(creator: str | None = None) -> dict[str, Any]:
+        """YOU are the brain's reader. Returns one video's transcript (with [mm:ss] markers), the known topics and the
+        rules for writing knowledge cards. Read it, write the claims yourself, then call submit_claims. Repeat to
+        build the brain without any external AI key. Returns video=None when nothing is left."""
+        return call("analysis_next", creator)
+
+    @mcp.tool()
+    def submit_claims(video_id: str, claims: list[dict]) -> dict[str, Any]:
+        """Add your knowledge cards for a video. Each item: {"claim": one plain sentence, "quote": 6-40 words copied
+        EXACTLY from the transcript, "t": "mm:ss", "topic": short Title Case topic (reuse known topics),
+        "kind": advice|fact|protocol|warning|opinion}. Code checks every quote against the transcript and drops
+        any that don't match word for word; the result says how many were kept."""
+        return call("analysis_submit", video_id, claims)
+
+    @mcp.tool()
+    def list_topics() -> dict[str, Any]:
+        """All topics with claim counts and creators. Use it to plan clean topic names and merges."""
+        return call("topic_overview")
+
+    @mcp.tool()
+    def merge_topics(groups: dict[str, list[str]]) -> dict[str, Any]:
+        """Rename/merge topics: {"Protein Intake": ["Daily Protein", "Protein Timing"], ...}. Only existing names are
+        used; claims, topic notes, video links and search are rewritten, old names stay as aliases. Pause first."""
+        return call("apply_topic_groups", groups)
+
+    @mcp.tool()
+    def rebuild_brain() -> dict[str, Any]:
+        """Re-render every note (clean names, key points, topic + related links, dashboards). Pause first."""
+        return call("rebuild", False)
+
+    @mcp.tool()
+    def pause_brain() -> dict[str, Any]:
+        """Pause background downloading/analysis (needed before merge_topics or rebuild_brain)."""
+        return call("pause")
+
+    @mcp.tool()
+    def resume_brain() -> dict[str, Any]:
+        """Resume background work after maintenance."""
+        return call("resume")
+
+    @mcp.tool()
     def brain_graph() -> dict[str, Any]:
         """Start the live, animated graph of the brain on localhost and return its URL. Give the user the link:
         nodes pop in as videos and topics are added, and Replay animates how the brain was built."""

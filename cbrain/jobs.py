@@ -142,19 +142,20 @@ class JobStore:
         return queued
 
     def claim(self, states: tuple[str, ...] = (JobState.QUEUED.value,), limit: int = 1,
-              lease_seconds: int = 600, to_state: str = JobState.FETCHING.value) -> list[VideoRow]:
-        """Atomically lease the highest-priority due jobs."""
-        t = time.time()
+              lease_seconds: int = 600, to_state: str = JobState.FETCHING.value,
+              ignore_backoff: bool = False, creator_slug: str | None = None) -> list[VideoRow]:
+        """Atomically lease the highest-priority due jobs (ignore_backoff: also jobs resting after a quota error)."""
+        t = time.time() if not ignore_backoff else float("inf")
         marks = ",".join("?" * len(states))
         with self.tx():
             rows = self.db.execute(
                 f"""SELECT * FROM videos WHERE state IN ({marks}) AND selected=1 AND next_try_at<=?
-                    ORDER BY priority DESC, published DESC LIMIT ?""",
-                (*states, t, limit),
+                    AND (? IS NULL OR creator_slug=?) ORDER BY priority DESC, published DESC LIMIT ?""",
+                (*states, t, creator_slug, creator_slug, limit),
             ).fetchall()
             for r in rows:
                 self.db.execute("UPDATE videos SET state=?, lease_until=?, updated_at=? WHERE id=?",
-                                (to_state, t + lease_seconds, now_iso(), r["id"]))
+                                (to_state, time.time() + lease_seconds, now_iso(), r["id"]))
         return [self._row(r, state=to_state) for r in rows]
 
     def mark(self, video_id: str, state: JobState | str, transcript_source: str | None = None) -> None:

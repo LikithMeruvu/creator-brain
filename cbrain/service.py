@@ -769,6 +769,82 @@ class Brain:
         return {"matched": len(unique), "added": len(added), "videos": preview, "worker_started": started,
                 "message": f"Added {len(added)} video(s) to {cr.name}'s brain; they download in the background."}
 
+    # ---- agent mode: the user's own AI does the reading, code does the checking ------------------------
+    @_safe
+    def analysis_next(self, creator: str | None = None) -> dict:
+        """Lease the next video that still needs claims and hand its transcript + rules to the agent."""
+        slug = self._resolve(creator).slug if creator else None
+        rows = self.store.claim(states=("written",), limit=1, lease_seconds=1800, to_state="extracting",
+                                ignore_backoff=True, creator_slug=slug)  # the agent needs no Groq quota
+        if not rows:
+            counts = self.store.counts(slug)
+            return {"video": None, "message": "Nothing left to analyse." if not counts.get("written") else
+                    "Remaining videos are leased by another worker; try again in a few minutes.", "counts": counts}
+        row = rows[0]
+        cr = self.store.get_creator(row.creator_slug)
+        ex = _mod("cbrain.think.extract")
+        transcript = _mod("cbrain.think.pipeline").Thinker(self.store, self.paths, self.settings, None, None
+                                                          )._load_transcript(row.id)
+        known = sorted(_mod("cbrain.think.topics").TopicRegistry(self.paths).all_topics())[:150]
+        task = ex.write_agent_batch(self.paths, cr, row.meta(), transcript, known).read_text(encoding="utf-8")
+        head, _, rest = task.partition("## What to write")
+        if rest:  # drop only the file-writing instructions (they don't apply over MCP); keep the transcript
+            task = head + "## Transcript" + rest.split("## Transcript", 1)[-1]
+        left = self.store.counts(slug).get("written", 0)
+        return {"video_id": row.id, "title": row.title, "creator": cr.name, "videos_left": left, "task": task,
+                "message": f"Read the task, then call submit_claims('{row.id}', claims). {left} more after this."}
+
+    @_safe
+    def analysis_submit(self, video_id: str, claims: list) -> dict:
+        """Verify the agent's claims against the transcript (code, not AI) and add the kept ones to the brain."""
+        row = self.store.get(video_id)
+        if row is None:
+            return {"error": f"unknown video {video_id}", "hint": "use the video_id from next_video_to_analyse"}
+        cr = self.store.get_creator(row.creator_slug)
+        ex = _mod("cbrain.think.extract")
+        raw = ex.parse_claims_payload({"claims": claims}, cr.slug, row.id, row.published)
+        thinker = _mod("cbrain.think.pipeline").Thinker(self.store, self.paths, self.settings, self._writer(),
+                                                         self._index())
+        kept = thinker.process(row, cr, raw_claims=raw)
+        self.store.mark(row.id, "done")
+        _mod("cbrain.vault.relink").relink(self.paths, self.store, self._writer(), only_videos={row.id})
+        rejected = len(raw) - len(kept)
+        return {"video_id": row.id, "submitted": len(claims), "kept": len(kept), "rejected": rejected,
+                "topics": sorted({c.topic for c in kept}),
+                "message": f"Kept {len(kept)} verified claims" + (f"; {rejected} rejected because the quote is not in "
+                           "the transcript word for word" if rejected else "") + "."}
+
+    @_safe
+    def topic_overview(self) -> dict:
+        """Every topic with its claim count and creators, so the agent can plan merges and names."""
+        counts: dict = {}
+        for c in self._iter_claims():
+            t = c.get("topic") or ""
+            d = counts.setdefault(t, {"claims": 0, "creators": set()})
+            d["claims"] += 1
+            d["creators"].add(c.get("creator"))
+        rows = sorted(({"topic": t, "claims": d["claims"], "creators": sorted(d["creators"])} for t, d in counts.items()),
+                      key=lambda r: -r["claims"])
+        return {"topics": rows, "message": f"{len(rows)} topics."}
+
+    @_safe
+    def apply_topic_groups(self, groups: dict) -> dict:
+        """Merge topics the agent grouped ({new name: [old names]}); code checks names and relinks every note."""
+        if self._worker_running():
+            return {"error": "the background worker is running", "hint": "call pause_brain first, then retry"}
+        mg = _mod("cbrain.think.merge")
+        known = {r["topic"] for r in self.topic_overview()["topics"]}
+        clean = {}
+        for name, members in (groups or {}).items():
+            ms = [m for m in members if m in known]
+            if name and ms:
+                clean[name] = ms
+        res = mg.apply_groups(self.paths, self.store, self._writer(), self._index(), clean)
+        res.update(_mod("cbrain.vault.relink").relink(self.paths, self.store, self._writer()))
+        self._refresh_overview()
+        res["message"] = f"Merged {res.get('merged_topics', 0)} topic names; {res.get('topics_now')} topics now."
+        return res
+
     @_safe
     def rebuild(self, merge: bool = True) -> dict:
         """Re-render the whole vault: readable names, key points, topic + related links, dashboards.
