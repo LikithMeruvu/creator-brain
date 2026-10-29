@@ -7,8 +7,8 @@
 Transcripts → verified claims with timestamps → linked topics → an Obsidian vault + an MCP server
 that Claude Code, Codex, Cursor and Gemini CLI can build, search and keep up to date.
 
-![Live brain graph](docs/images/live-graph.png)
-<sub>Two brains (Jeremy Ethier, Jeff Nippard) in one vault — creators blue, topics green, videos grey. `brain graph` shows it live and can replay how it grew.</sub>
+![Creator Brain demo](docs/media/creator-brain-demo.gif)
+<sub>Two brains growing in one vault: Jeremy Ethier (pink) and Jeff Nippard (blue), joined by shared topics (green). [MP4 version](docs/media/creator-brain-demo.mp4)</sub>
 
 </div>
 
@@ -36,6 +36,13 @@ in the video, and code (not the AI) checks that the quote really is in the trans
 
 ![A video note in Obsidian](docs/images/obsidian-video-note.png)
 <sub>A video note: properties link the creator and topics; below come Key points (claim · timestamp · topic) and the transcript.</sub>
+
+</div>
+
+<div align="center">
+
+![Live brain graph](docs/images/live-graph.png)
+<sub>`brain graph`: the live view in your browser. New notes pop in as they arrive; Replay animates how the brain grew.</sub>
 
 </div>
 

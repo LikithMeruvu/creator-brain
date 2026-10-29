@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="layout.js"></script>
+    <style>
+      :root {
+        --ground: #07090f;
+        --ink: #eef1f7;
+        --mut: #8a93a8;
+        --topic: #22c55e;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); }
+      #root {
+        position: relative; width: 100%; height: 100%; overflow: hidden;
+        font-family: system-ui, sans-serif; color: var(--ink);
+        background: radial-gradient(1200px 700px at 50% 55%, #111a2e 0%, var(--ground) 70%);
+      }
+      .clip { position: absolute; inset: 0; }
+      #graph svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+      .center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+      .brand { font-size: 112px; font-weight: 800; letter-spacing: -0.04em; }
+      .brand span { color: var(--topic); }
+      .tag { margin-top: 18px; font-size: 38px; color: var(--mut); font-weight: 500; }
+      .chip {
+        position: absolute; left: 80px; bottom: 88px; display: block;
+        padding: 22px 30px; border-radius: 18px; background: rgba(13, 18, 30, 0.86);
+        border: 1px solid rgba(255, 255, 255, 0.1); min-width: 640px;
+      }
+      .cmd { font-family: ui-monospace, monospace; font-size: 38px; font-weight: 600; }
+      .cmd .p { color: var(--topic); }
+      .sub { margin-top: 8px; font-size: 26px; color: var(--mut); }
+      #hud { position: absolute; left: 80px; top: 64px; font-size: 26px; color: var(--mut); }
+      #hud b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+      #hud .name { font-size: 30px; color: var(--ink); font-weight: 800; margin-bottom: 6px; letter-spacing: -0.02em; }
+      #feats {
+        position: absolute; right: 80px; top: 330px; width: 700px;
+        display: flex; flex-direction: column; gap: 22px;
+      }
+      .feat {
+        display: block; font-size: 34px; font-weight: 600; padding: 20px 26px; border-radius: 16px;
+        background: rgba(13, 18, 30, 0.9); border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .feat i { font-style: normal; color: var(--topic); margin-right: 14px; }
+      #end-bg { position: absolute; inset: 0; background: rgba(7, 9, 15, 0.84); }
+      .rel { position: relative; }
+      .url { margin-top: 34px; font-family: ui-monospace, monospace; font-size: 40px; color: var(--ink);
+        padding: 16px 28px; border-radius: 14px; border: 1px solid rgba(34, 197, 94, 0.5); background: rgba(34, 197, 94, 0.08); }
+      .small { margin-top: 22px; font-size: 26px; color: var(--mut); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="20">
+      <section id="graph" class="clip" data-start="0" data-duration="20" data-track-index="0">
+        <svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="7" result="b" />
+              <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+          <g id="cam"><g id="links"></g><g id="nodes"></g><g id="labels"></g></g>
+        </svg>
+      </section>
+
+      <section id="title-card" class="clip center" data-start="0" data-duration="3.4" data-track-index="1">
+        <div id="t-brand" class="brand">Creator <span>Brain</span></div>
+        <div id="t-tag" class="tag">Turn any YouTube creator into a brain your AI can use.</div>
+      </section>
+
+      <section id="hud-clip" class="clip" data-start="3.2" data-duration="12.9" data-track-index="2">
+        <div id="hud"><div class="name">Creator Brain</div><b id="n-notes">0</b> notes &nbsp;·&nbsp; <b id="n-links">0</b> links</div>
+      </section>
+
+      <section id="chip1" class="clip" data-start="3.5" data-duration="4.7" data-track-index="3">
+        <div id="c1" class="chip">
+          <div class="cmd"><span class="p">$</span> brain add @JeremyEthier</div>
+          <div class="sub">278 videos → transcripts → verified claims</div>
+        </div>
+      </section>
+
+      <section id="chip2" class="clip" data-start="8.3" data-duration="4.3" data-track-index="3">
+        <div id="c2" class="chip">
+          <div class="cmd"><span class="p">$</span> brain add @JeffNippard</div>
+          <div class="sub">shared topics connect the two brains</div>
+        </div>
+      </section>
+
+      <section id="feats-clip" class="clip" data-start="12.4" data-duration="3.9" data-track-index="4">
+        <div id="feats">
+          <div class="feat"><i>✓</i>Every claim quoted &amp; timestamped</div>
+          <div class="feat"><i>↻</i>Updates itself when new videos drop</div>
+          <div class="feat"><i>⌁</i>MCP for Claude Code, Codex, Cursor</div>
+          <div class="feat"><i>◎</i>Opens as an Obsidian vault</div>
+        </div>
+      </section>
+
+      <section id="end-card" class="clip center" data-start="16.2" data-duration="3.8" data-track-index="5">
+        <div id="end-bg"></div>
+        <div id="e-brand" class="brand rel">Creator <span>Brain</span></div>
+        <div id="e-tag" class="tag rel">YouTube creators → a knowledge brain for your AI</div>
+        <div id="e-url" class="url rel">github.com/LikithMeruvu/creator-brain</div>
+        <div id="e-small" class="small rel">open source · MIT · works with any MCP agent</div>
+      </section>
+    </div>
+
+    <script>
+      const B = window.BRAIN;
+      const SVGNS = "http://www.w3.org/2000/svg";
+      const jeff = B.creators.find((c) => c.startsWith("Jeff"));
+      const jeremy = B.creators.find((c) => c.startsWith("Jeremy"));
+      const COL = { [jeff]: "#60a5fa", [jeremy]: "#f472b6" };
+      const colorOf = (n) => (n.g === "topic" ? "#22c55e" : COL[n.c] || "#9ca3af");
+      const radiusOf = (n) => (n.g === "creator" ? 30 : n.g === "topic" ? Math.min(7 + Math.sqrt(n.d) * 1.6, 20) : 3.6);
+
+      // reveal schedule: Jeremy's brain, then topics, then Jeff's brain (sweeping round each hub)
+      const hub = (name) => B.nodes.find((n) => n.g === "creator" && n.c === name);
+      const sweep = (name, t0, t1) => {
+        const h = hub(name);
+        const vs = B.nodes.filter((n) => n.g === "video" && n.c === name);
+        vs.sort((a, b) => Math.atan2(a.y - h.y, a.x - h.x) - Math.atan2(b.y - h.y, b.x - h.x));
+        vs.forEach((n, i) => (n.at = t0 + ((t1 - t0) * i) / Math.max(1, vs.length - 1)));
+      };
+      hub(jeremy).at = 3.5;
+      sweep(jeremy, 3.7, 7.3);
+      const topics = B.nodes.filter((n) => n.g === "topic").sort((a, b) => b.d - a.d);
+      topics.forEach((n, i) => (n.at = 6.3 + (2.2 * i) / Math.max(1, topics.length - 1)));
+      hub(jeff).at = 8.4;
+      sweep(jeff, 8.6, 11.4);
+      B.nodes.forEach((n) => { if (n.at == null) n.at = 11.6; });
+      const labelMin = topics[Math.min(9, topics.length - 1)].d;
+
+      const linksG = document.getElementById("links");
+      const nodesG = document.getElementById("nodes");
+      const labG = document.getElementById("labels");
+      const tl = gsap.timeline({ paused: true });
+
+      B.links.forEach(([a, b]) => {
+        const s = B.nodes[a], t = B.nodes[b];
+        const ln = document.createElementNS(SVGNS, "line");
+        ln.setAttribute("x1", s.x); ln.setAttribute("y1", s.y); ln.setAttribute("x2", t.x); ln.setAttribute("y2", t.y);
+        const toTopic = s.g === "topic" || t.g === "topic";
+        ln.setAttribute("stroke", toTopic ? "#34d399" : colorOf(s.g === "creator" ? s : t));
+        ln.setAttribute("stroke-width", toTopic ? 1.1 : 0.8);
+        ln.setAttribute("opacity", 0);
+        linksG.appendChild(ln);
+        tl.fromTo(ln, { attr: { opacity: 0 } }, { attr: { opacity: toTopic ? 0.4 : 0.22 }, duration: 0.5, ease: "power1.out" }, Math.max(s.at, t.at) + 0.08);
+      });
+
+      B.nodes.forEach((n) => {
+        const c = document.createElementNS(SVGNS, "circle");
+        c.setAttribute("cx", n.x); c.setAttribute("cy", n.y); c.setAttribute("r", 0);
+        c.setAttribute("fill", colorOf(n));
+        if (n.g !== "video") c.setAttribute("filter", "url(#glow)");
+        else c.setAttribute("fill-opacity", 0.85);
+        nodesG.appendChild(c);
+        const r = radiusOf(n);
+        tl.fromTo(c, { attr: { r: 0 } }, { attr: { r: r * 1.7 }, duration: 0.18, ease: "power2.out" }, n.at)
+          .to(c, { attr: { r }, duration: 0.3, ease: "power2.inOut" }, n.at + 0.18);
+        if (n.g === "creator" || (n.g === "topic" && n.d >= labelMin)) {
+          const tx = document.createElementNS(SVGNS, "text");
+          tx.setAttribute("x", n.x); tx.setAttribute("y", n.y + r + (n.g === "creator" ? 34 : 22));
+          tx.setAttribute("text-anchor", "middle");
+          tx.setAttribute("font-family", "system-ui, sans-serif");
+          tx.setAttribute("font-size", n.g === "creator" ? 30 : 19);
+          tx.setAttribute("font-weight", n.g === "creator" ? 800 : 600);
+          tx.setAttribute("fill", n.g === "creator" ? "#ffffff" : "#d7f5e3");
+          tx.setAttribute("opacity", 0);
+          tx.textContent = n.label;
+          labG.appendChild(tx);
+          tl.fromTo(tx, { attr: { opacity: 0 } }, { attr: { opacity: 1 }, duration: 0.4 }, n.at + 0.3);
+        }
+      });
+
+      // camera: start close on Jeremy's brain, pull back to show both, then make room for the feature list
+      const jh = hub(jeremy);
+      tl.fromTo("#cam", { scale: 1.55, x: (960 - jh.x) * 0.9, y: (540 - jh.y) * 0.9, svgOrigin: "960 540" },
+        { scale: 1, x: 0, y: 0, svgOrigin: "960 540", duration: 8.4, ease: "power2.inOut" }, 3.3);
+      tl.to("#cam", { scale: 0.62, x: -330, svgOrigin: "960 540", duration: 1.1, ease: "power2.inOut" }, 12.0);
+
+      // counters
+      const cnt = { n: 0, l: 0 };
+      const nN = document.getElementById("n-notes"), nL = document.getElementById("n-links");
+      tl.fromTo(cnt, { n: 0, l: 0 }, { n: B.nodes.length, l: B.links.length, duration: 8.3, ease: "none",
+        onUpdate: () => { nN.textContent = Math.round(cnt.n); nL.textContent = Math.round(cnt.l); } }, 3.4);
+
+      // text
+      tl.fromTo("#t-brand", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: "power3.out" }, 0.3)
+        .fromTo("#t-tag", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.7, ease: "power3.out" }, 0.8)
+        .to(["#t-brand", "#t-tag"], { opacity: 0, y: -30, duration: 0.5, ease: "power2.in" }, 2.85)
+        .fromTo("#hud", { opacity: 0, y: -12 }, { opacity: 1, y: 0, duration: 0.5 }, 3.3)
+        .fromTo("#c1", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 3.55)
+        .to("#c1", { opacity: 0, y: 20, duration: 0.4 }, 7.75)
+        .fromTo("#c2", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 8.35)
+        .to("#c2", { opacity: 0, y: 20, duration: 0.4 }, 12.15)
+        .fromTo(".feat", { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.5, stagger: 0.35, ease: "power3.out" }, 12.5)
+        .to(".feat", { opacity: 0, duration: 0.4 }, 15.85)
+        .to("#hud", { opacity: 0, duration: 0.4 }, 15.7)
+        .fromTo("#end-bg", { opacity: 0 }, { opacity: 1, duration: 0.6 }, 16.2)
+        .fromTo("#e-brand", { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.7, ease: "power3.out" }, 16.4)
+        .fromTo("#e-tag", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6 }, 16.8)
+        .fromTo("#e-url", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6 }, 17.2)
+        .fromTo("#e-small", { opacity: 0 }, { opacity: 1, duration: 0.6 }, 17.6);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
