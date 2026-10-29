@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -57,11 +58,31 @@ class VideoRow:
                          duration=self.duration, views=self.views)
 
 
+class _LockedConnection:
+    """Serialises every statement on the shared connection; tx() holds the same re-entrant lock."""
+
+    def __init__(self, conn: sqlite3.Connection, lock: threading.RLock):
+        self._conn, self._lock = conn, lock
+
+    def execute(self, *args):
+        with self._lock:
+            return self._conn.execute(*args)
+
+    def executescript(self, script: str):
+        with self._lock:
+            return self._conn.executescript(script)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
 class JobStore:
     def __init__(self, db_path: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(db_path, timeout=30, isolation_level=None, check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
+        conn = sqlite3.connect(db_path, timeout=30, isolation_level=None, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        self.lock = threading.RLock()
+        self.db = _LockedConnection(conn, self.lock)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA busy_timeout=30000")
         self.db.executescript(SCHEMA)
@@ -146,15 +167,27 @@ class JobStore:
              max_attempts: int = 3, retry: bool = True) -> str:
         """Record a failure; back off exponentially, park after max_attempts. Returns new state."""
         back_to = back_to.value if isinstance(back_to, JobState) else back_to
-        row = self.db.execute("SELECT attempts FROM videos WHERE id=?", (video_id,)).fetchone()
-        attempts = (row["attempts"] if row else 0) + 1
-        parked = (not retry) or attempts >= max_attempts
-        state = JobState.PARKED.value if parked else back_to
+        with self.tx():
+            row = self.db.execute("SELECT attempts FROM videos WHERE id=?", (video_id,)).fetchone()
+            attempts = (row["attempts"] if row else 0) + 1
+            parked = (not retry) or attempts >= max_attempts
+            state = JobState.PARKED.value if parked else back_to
+            self._fail_update(video_id, state, attempts, error)
+        return state
+
+    def _fail_update(self, video_id: str, state: str, attempts: int, error: str) -> None:
         self.db.execute(
             """UPDATE videos SET state=?, attempts=?, last_error=?, lease_until=0, next_try_at=?, updated_at=?
                WHERE id=?""",
             (state, attempts, error[:500], time.time() + 60 * 2 ** attempts, now_iso(), video_id))
-        return state
+
+    def update_meta(self, video_id: str, published: str | None = None, views: int | None = None,
+                    duration: int | None = None, title: str | None = None) -> None:
+        """Fill details that flat listing lacks (publish date, exact views) once the full page is fetched."""
+        self.db.execute(
+            """UPDATE videos SET published=COALESCE(?,published), views=COALESCE(?,views),
+               duration=COALESCE(?,duration), title=COALESCE(?,title), updated_at=? WHERE id=?""",
+            (published, views, duration, title, now_iso(), video_id))
 
     def defer(self, video_id: str, seconds: float, back_to: JobState | str = JobState.QUEUED) -> None:
         """Put a job back without counting an attempt (e.g. all lanes blocked)."""
@@ -202,13 +235,14 @@ class JobStore:
 
     @contextlib.contextmanager
     def tx(self) -> Iterator[None]:
-        self.db.execute("BEGIN IMMEDIATE")
-        try:
-            yield
-            self.db.execute("COMMIT")
-        except BaseException:
-            self.db.execute("ROLLBACK")
-            raise
+        with self.lock:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                yield
+                self.db.execute("COMMIT")
+            except BaseException:
+                self.db.execute("ROLLBACK")
+                raise
 
     @staticmethod
     def _row(r: sqlite3.Row, state: str | None = None) -> VideoRow:

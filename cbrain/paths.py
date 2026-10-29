@@ -35,6 +35,8 @@ class VaultPaths:
     @property
     def topics_json(self) -> Path: return self.brain / "topics.json"
     @property
+    def conflicts(self) -> Path: return self.brain / "conflicts.json"
+    @property
     def transcripts(self) -> Path: return self.brain / "transcripts"
     @property
     def visual(self) -> Path: return self.brain / "visual"
