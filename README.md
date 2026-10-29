@@ -88,6 +88,24 @@ Give the agent the playbook too: copy `skills/creator-brain/` into your skills f
 | `next_video_to_analyse` · `submit_claims(video_id, claims)` | **Your agent reads the transcript and writes the claims**; code verifies every quote (no API key needed) |
 | `list_topics` · `merge_topics(groups)` · `rebuild_brain` · `pause_brain` / `resume_brain` | Your agent names, merges and restructures topics and notes |
 
+## Example: a cited answer
+
+> **You:** I'm a beginner, 4 days a week, want to lose fat and keep muscle. What should I do?
+>
+> **Your agent (searching the Jeremy Ethier + Jeff Nippard brains):**
+> - Keep total volume moderate — even a high-volume 6-day plan in Jeremy's test was only
+>   *"around 20 sets per muscle per week"*
+>   ([Why Almost Everyone Is Wasting Their Time In The Gym — 1:12](https://www.youtube.com/watch?v=wI2WVevL_lk&t=72s)).
+> - Eat in a small deficit with high protein: *"eating in a slight deficit of 2,300 calories per day"* with at least
+>   120 g protein in his 100-day case study
+>   ([Giving A Stranger Fake Steroids For 100 Days — 7:15](https://www.youtube.com/watch?v=L3pDtUk7ZmY&t=435s)).
+> - Add a chewy, solid food to meals — it *"slows down your eating and that helps you just like get more full"*
+>   ([I Proved My 6-Pack Abs Diet Works For ANYONE — 4:02](https://www.youtube.com/watch?v=HkrWExj1QNk&t=242s)).
+>
+> *Saved to `outputs/My Fitness Plan.md` · based on 278 Jeremy + 147 Jeff videos.*
+
+Every quote above was checked by code against the transcript before it entered the brain.
+
 ## Use cases
 
 - **Personal coach** — *"Make me a 4-day hypertrophy plan from Jeremy Ethier. I have a bad shoulder."*
@@ -178,6 +196,15 @@ API keys live in `~/.cbrain/secrets.json` or `GROQ_API_KEY`, never in the vault.
 - Groq's free tier caps tokens per minute and requests per day; big channels finish over hours, in the background.
 - The quote check proves the words exist in the transcript — not that the advice is right.
 - Transcripts stay on your machine. Don't redistribute creators' content.
+
+## Responsible use
+
+- Creator Brain fetches **public captions** for your **personal** knowledge base. Transcripts, notes and claims stay
+  on your machine — do not republish creators' content or share vaults built from it.
+- Respect YouTube's Terms of Service and your local law. Keep the default pacing; proxies are optional and your
+  responsibility.
+- Always credit and link the creator (every claim links back to the exact second of their video).
+- Advice in a brain is what a creator said, not medical, financial or legal advice.
 
 ## Develop
 
