@@ -80,7 +80,7 @@ def test_video_note_frontmatter_and_body(writer):
     tr = make_transcript(removed=[(10.0, 40.0)])
     path = writer.write_video_note(CREATOR, meta, tr, topics=["Protein Intake"], on_screen=[(30.0, "A bar chart")])
     assert path.parent == writer.paths.videos_dir("Jeremy Ethier")
-    assert path.stem.startswith("2026-10-01 Best Protein")
+    assert path.stem.startswith("Best Protein")
     for ch in '<>:"/\\|?*#':
         assert ch not in path.stem
     text = path.read_text(encoding="utf-8")
@@ -93,7 +93,7 @@ def test_video_note_frontmatter_and_body(writer):
     assert "Topics: [[Protein Intake]]" in text
     assert "## On screen" in text and "A bar chart" in text
     # no chapters -> sections every ~120 s: 300 s transcript -> 3 sections
-    headings = re.findall(r"^## \[(\d+:\d\d)\] ", text, re.M)
+    headings = re.findall(r"^### \[(\d+:\d\d)\] ", text, re.M)   # chapters sit under "## Transcript"
     assert headings == ["00:00", "02:00", "04:00"]
     # every paragraph ends with a timestamp link carrying &t=
     paragraphs = [p for p in text.split("\n\n") if p.startswith("segment number")]
@@ -130,16 +130,16 @@ def test_video_note_collision_and_unknown_date(writer):
     b = VideoMeta(id="bbb", title="Same Title", published="2026-10-01")
     pa = writer.write_video_note(CREATOR, a, make_transcript("aaa"))
     pb = writer.write_video_note(CREATOR, b, make_transcript("bbb"))
-    assert pa != pb and pb.stem == "2026-10-01 Same Title (bbb)"
+    assert pa != pb and pb.stem == "Same Title (bbb)"
     assert writer.write_video_note(CREATOR, b, make_transcript("bbb")) == pb
     assert writer.video_note_path(CREATOR, a) == pa
-    # unknown date -> 0000-00-00, and renamed once the date is known (old file removed)
+    # names never carry the date, so learning the date later keeps the same note
     c = VideoMeta(id="ccc", title="No Date")
     pc = writer.write_video_note(CREATOR, c, make_transcript("ccc"))
-    assert pc.stem == "0000-00-00 No Date"
+    assert pc.stem == "No Date"
     c.published = "2026-02-02"
     pc2 = writer.write_video_note(CREATOR, c, make_transcript("ccc"))
-    assert pc2.stem == "2026-02-02 No Date" and not pc.exists()
+    assert pc2 == pc and "published: 2026-02-02" in pc.read_text(encoding="utf-8")
 
 
 def test_topic_note_claims_conflicts_and_links(writer):
@@ -158,7 +158,7 @@ def test_topic_note_claims_conflicts_and_links(writer):
     assert fm["type"] == "topic" and fm["aliases"] == ["protein", "Protein Target"]
     assert fm["creators"] == ["[[Jeremy Ethier]]"]
     lines = [ln for ln in text.splitlines() if ln.startswith("- ")]
-    assert "Eat 2.2" in lines[0] and "[[2026-06-01 New Video|2026-06-01]]" in lines[0]   # newest first
+    assert "Eat 2.2" in lines[0] and "[[New Video|2026-06-01]]" in lines[0]   # newest first
     assert lines[1].startswith("- ~~Eat 1.6 g/kg protein") and "(changed 2026-06-01)" in lines[1]
     assert "[\u25b6 01:05](https://www.youtube.com/watch?v=v1&t=65s)" in lines[1]
     assert "## Where creators agree / disagree" in text and "Raised target from 1.6 to 2.2" in text
@@ -188,7 +188,7 @@ def test_update_note_append_and_idempotent(writer):
     writer.write_update_note(CREATOR, "2026-10-29", [m2], [], [])               # same day: appended
     fm = parse_frontmatter(p.read_text(encoding="utf-8"))
     assert fm["new_videos"] == 2 and fm["new_claims"] == 12
-    assert "[[2026-10-28 First|First]]" in p.read_text(encoding="utf-8") and "Second" in p.read_text(encoding="utf-8")
+    assert "[[First|First]]" in p.read_text(encoding="utf-8") and "Second" in p.read_text(encoding="utf-8")
 
 
 def test_creator_note_and_home(writer):

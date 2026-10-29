@@ -27,6 +27,15 @@ from .sponsorblock import cut, sponsor_spans
 log = logging.getLogger("cbrain.fetch")
 
 
+def wrong_script(transcript: Transcript, language: str | None) -> bool:
+    """True when an English channel's transcript is mostly non-Latin text (e.g. Whisper guessed Hindi)."""
+    if (language or "en").split("-")[0].lower() != "en" or not transcript.segments:
+        return False
+    text = " ".join(s.text for s in transcript.segments[:200])[:4000]
+    letters = [c for c in text if c.isalpha()]
+    return bool(letters) and sum(c.isascii() for c in letters) / len(letters) < 0.8
+
+
 def _lookup_meta(video_id: str, proxy: str | None) -> dict | None:
     """Publish date/views for videos whose transcript came from audio (no page info). Patched out in tests."""
     from ..backfill import lookup
@@ -185,6 +194,12 @@ class FetchRunner:
             return ("retry", str(e))
         except FetchError as e:
             return ("retry", str(e))
+        if asr_ok and wrong_script(transcript, s.default_language):
+            # a mislabelled caption track or a Whisper language guess: redo it from audio, told the language
+            try:
+                transcript = transcribe(row.id, s, proxy, language=s.default_language)
+            except FetchError as e:
+                return ("retry", f"transcript in the wrong language and audio retry failed: {e}")
         if not info.get("published"):  # audio-only paths can arrive without page metadata: one cheap lookup
             try:
                 info = {**info, **(_lookup_meta(row.id, proxy) or {})}

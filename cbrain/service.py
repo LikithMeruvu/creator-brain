@@ -770,6 +770,37 @@ class Brain:
                 "message": f"Added {len(added)} video(s) to {cr.name}'s brain; they download in the background."}
 
     @_safe
+    def rebuild(self, merge: bool = True) -> dict:
+        """Re-render the whole vault: readable names, key points, topic + related links, dashboards.
+        With merge=True (and a Groq key) narrow topics are folded together first."""
+        if self._worker_running():
+            return {"error": "the background worker is running", "hint": "run `brain pause`, wait a minute, retry"}
+        out: dict = {}
+        if merge and _mod("cbrain.think.llm").LLMClient(self.settings).available():
+            m = self.merge_topics()
+            out["merge"] = {k: m.get(k) for k in ("topics_before", "topics_now", "merged_topics", "error")}
+        writer = self._writer()
+        out.update(_mod("cbrain.vault.relink").relink(self.paths, self.store, writer, rename_all=True))
+        _mod("cbrain.vault.graph").write_obsidian_config(self.paths)
+        self._refresh_overview()
+        out["doctor"] = {i["check"]: i["count"] for i in self.doctor().get("issues", [])}
+        out["message"] = (f"Rebuilt {out['videos_relinked']} video notes and {out['topics_relinked']} topic notes."
+                          + (f" Topics: {out['merge'].get('topics_before')} -> {out['merge'].get('topics_now')}."
+                             if out.get("merge", {}).get("topics_now") else ""))
+        return out
+
+    def graph_url(self, port: int = 8787) -> dict:
+        """Start (once) the live graph page in a background thread and return its URL."""
+        if not getattr(self, "_graph_thread", None):
+            lg = _mod("cbrain.livegraph")
+            server = lg.make_server(self.paths.root, port)
+            self._graph_thread = threading.Thread(target=server.serve_forever, name="livegraph", daemon=True)
+            self._graph_thread.start()
+            self._graph_port = server.server_address[1]
+        url = f"http://127.0.0.1:{self._graph_port}/"
+        return {"url": url, "message": f"Live brain graph: {url} (updates every 2 s; Replay animates how it was built)."}
+
+    @_safe
     def merge_topics(self, dry_run: bool = False) -> dict:
         """Fold narrow topics into broader ones (LLM proposes groups of existing names; code applies them)."""
         if self._worker_running() and not dry_run:

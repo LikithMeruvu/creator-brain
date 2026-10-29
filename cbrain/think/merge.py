@@ -59,7 +59,12 @@ def propose_groups(topics: dict[str, int], llm) -> dict[str, list[str]]:
 
 def _absorb(groups: dict[str, list[str]], payload, allowed: set[str]) -> None:
     seen: set[str] = set()
-    items = payload.get("groups", []) if isinstance(payload, dict) else []
+    if isinstance(payload, list):           # some models answer with the bare list
+        items = payload
+    elif isinstance(payload, dict):
+        items = payload.get("groups") or next((v for v in payload.values() if isinstance(v, list)), [])
+    else:
+        items = []
     for g in items:
         if not isinstance(g, dict):
             continue

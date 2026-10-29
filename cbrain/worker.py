@@ -440,12 +440,20 @@ class Worker:
                 t.join(0.5)
 
     def _overview_loop(self, done: threading.Event) -> None:
-        """Keep Home, creator notes and All-Videos tables live while a long run is in progress."""
+        """Keep Home, creator notes and All-Videos tables live, and link newly analysed videos, during a run."""
+        linked = {r.id for r in self.store.videos(state="done")}
         while True:
             try:
                 write_overview(self.paths, self.store, self.writer)
             except Exception:  # noqa: BLE001 - a dashboard refresh must never stop the run
                 log.exception("overview refresh failed")
+            try:
+                fresh = {r.id for r in self.store.videos(state="done")} - linked
+                if fresh:
+                    _mod("cbrain.vault.relink").relink(self.paths, self.store, self.writer, only_videos=fresh)
+                    linked |= fresh
+            except Exception:  # noqa: BLE001
+                log.exception("relink failed")
             if done.wait(OVERVIEW_REFRESH_SECONDS):
                 return
 

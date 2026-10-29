@@ -321,3 +321,11 @@ def test_retries_park_after_max_attempts(vault, monkeypatch):
     store.db.execute("UPDATE videos SET next_try_at=0")  # skip the backoff
     r.run()
     assert store.get(vid(0)).state == JobState.PARKED.value
+
+
+def test_wrong_script_detects_non_english_transcript():
+    from cbrain.fetch.runner import wrong_script
+    from cbrain.models import Segment, Transcript
+    hindi = Transcript("x", [Segment(0, 1, "मेरे सबी लोगों को राइट को पलटने पर")], "groq_whisper")
+    english = Transcript("x", [Segment(0, 1, "train each muscle twice a week")], "auto_caption")
+    assert wrong_script(hindi, "en") and not wrong_script(english, "en") and not wrong_script(hindi, "hi")

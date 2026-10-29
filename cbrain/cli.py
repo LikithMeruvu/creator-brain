@@ -87,6 +87,12 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--top", type=int, help="add the N most-viewed videos not yet in the brain")
     m.add_argument("--dry-run", action="store_true", help="only show what would be added")
     m.add_argument("--json", action="store_true")
+    rb = sub.add_parser("rebuild", help="re-render names, key points and links for the whole vault (pause first)")
+    rb.add_argument("--no-merge", action="store_true", help="skip folding narrow topics together")
+    rb.add_argument("--json", action="store_true")
+    gr = sub.add_parser("graph", help="open the live, animated brain graph in your browser")
+    gr.add_argument("--port", type=int, default=8787)
+    gr.add_argument("--no-open", action="store_true")
     tm = sub.add_parser("merge-topics", help="fold narrow topics into broader ones (pause first)")
     tm.add_argument("--dry-run", action="store_true", help="only show the proposed groups")
     tm.add_argument("--json", action="store_true")
@@ -275,6 +281,12 @@ def main(argv: list[str] | None = None) -> int:
         return _emit(brain.resume(), False)
     if args.cmd == "retry":
         return _emit(brain.retry_parked(args.creator), False)
+    if args.cmd == "rebuild":
+        return _emit(brain.rebuild(merge=not args.no_merge), j)
+    if args.cmd == "graph":
+        from .livegraph import serve
+        serve(brain.paths.root, port=args.port, open_browser=not args.no_open)
+        return 0
     if args.cmd == "merge-topics":
         res = brain.merge_topics(dry_run=args.dry_run)
         if not j and isinstance(res, dict) and res.get("groups"):

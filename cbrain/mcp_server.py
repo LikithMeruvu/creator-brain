@@ -58,6 +58,12 @@ def create_server(get_brain: Getter) -> Any:
         return call("add_videos", creator, match=match, video_ids=video_ids, top=top, dry_run=dry_run)
 
     @mcp.tool()
+    def brain_graph() -> dict[str, Any]:
+        """Start the live, animated graph of the brain on localhost and return its URL. Give the user the link:
+        nodes pop in as videos and topics are added, and Replay animates how the brain was built."""
+        return call("graph_url")
+
+    @mcp.tool()
     def update_creators(creator: str | None = None) -> dict[str, Any]:
         """Check one creator (or all of them) for new videos and queue anything new. Cheap and quick; it also
         runs automatically about once a day. New material appears in search as it finishes processing."""
