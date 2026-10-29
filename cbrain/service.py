@@ -318,7 +318,9 @@ class Brain:
         if not old.exists():
             return 0
         try:
-            return int(_mod("cbrain.legacy_import").import_old_creator_brain(old, self.store, self.paths, creator) or 0)
+            n = int(_mod("cbrain.legacy_import").import_old_creator_brain(old, self.store, self.paths, creator) or 0)
+            self.store.include_downloaded(creator.slug)  # transcripts already on disk cost nothing: keep them all
+            return n
         except Exception as e:  # noqa: BLE001 - old data is a bonus, never a blocker
             worker.log_line(self.paths, f"WARN legacy import failed: {type(e).__name__}: {e}")
             return 0

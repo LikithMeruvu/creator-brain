@@ -181,6 +181,12 @@ class JobStore:
                WHERE id=?""",
             (state, attempts, error[:500], time.time() + 60 * 2 ** attempts, now_iso(), video_id))
 
+    def include_downloaded(self, creator_slug: str) -> int:
+        """Select every video whose transcript is already downloaded, even outside the chosen scope."""
+        return self.db.execute(
+            "UPDATE videos SET selected=1 WHERE creator_slug=? AND selected=0 AND state NOT IN ('queued','fetching')",
+            (creator_slug,)).rowcount
+
     def update_meta(self, video_id: str, published: str | None = None, views: int | None = None,
                     duration: int | None = None, title: str | None = None) -> None:
         """Fill details that flat listing lacks (publish date, exact views) once the full page is fetched."""

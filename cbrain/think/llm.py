@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import logging
 import random
+import threading
 import time
 import urllib.error
 import urllib.request
+from collections import deque
 from typing import Callable
 
 from ..config import Settings
@@ -73,11 +75,55 @@ def parse_json_text(text: str) -> dict | list:
     raise ValueError("model output is not valid JSON")
 
 
+class _RateGate:
+    """Process-wide tokens-per-minute budget shared by every thread, so parallel windows never storm Groq.
+    Learns the real limit from Groq's x-ratelimit-limit-tokens header; a 429 pauses all threads together."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.events: deque[tuple[float, int]] = deque()
+        self.learned_tpm: int | None = None
+        self.blocked_until = 0.0
+
+    def wait(self, tokens: int, default_tpm: int, sleep: Callable[[float], None]) -> None:
+        while True:
+            with self.lock:
+                now = time.time()
+                while self.events and now - self.events[0][0] > 60:
+                    self.events.popleft()
+                limit = self.learned_tpm or default_tpm
+                used = sum(t for _, t in self.events)
+                if now < self.blocked_until:
+                    delay = self.blocked_until - now
+                elif self.events and used + tokens > limit * 0.9:
+                    delay = 60 - (now - self.events[0][0]) + 0.5
+                else:
+                    self.events.append((now, tokens))
+                    return
+            sleep(max(0.5, delay))
+
+    def learn(self, headers: dict) -> None:
+        try:
+            limit = int(headers.get("x-ratelimit-limit-tokens", "") or 0)
+        except ValueError:
+            return
+        if limit > 0:
+            self.learned_tpm = limit
+
+    def block(self, seconds: float) -> None:
+        with self.lock:
+            self.blocked_until = max(self.blocked_until, time.time() + seconds)
+
+
+_GATE = _RateGate()
+
+
 class LLMClient:
     def __init__(self, settings: Settings, transport: Transport | None = None,
                  sleep: Callable[[float], None] = time.sleep, max_retries: int = MAX_RETRIES):
         self.settings = settings
         self._transport = transport or _urllib_transport
+        self._gate = None if transport else _GATE  # injected test transports skip the shared budget
         self._sleep = sleep
         self.max_retries = max_retries
 
@@ -109,10 +155,15 @@ class LLMClient:
             "User-Agent": "cbrain/0.1 (+creator-brain)",
         }
         last = "unknown error"
+        est_tokens = (len(system) + len(user)) // CHARS_PER_TOKEN + min(max_tokens, 1500)
         for attempt in range(self.max_retries + 1):
             retry_after: float | None = None
+            if self._gate:
+                self._gate.wait(est_tokens, self.settings.llm_tpm, self._sleep)
             try:
                 status, resp_headers, raw = self._transport(GROQ_CHAT_URL, headers, body, REQUEST_TIMEOUT_SECONDS)
+                if self._gate:
+                    self._gate.learn(resp_headers)
             except (urllib.error.URLError, TimeoutError, OSError, ConnectionError) as e:
                 status, resp_headers, raw = 0, {}, b""
                 last = f"network error: {type(e).__name__}"
@@ -131,7 +182,11 @@ class LLMClient:
                 break
             delay = retry_after if retry_after is not None else min(
                 BACKOFF_CAP_SECONDS, BACKOFF_BASE_SECONDS * 2 ** attempt + random.uniform(0, 1))
-            log.warning("Groq call failed (%s); retry %d/%d in %.1fs", last, attempt + 1, self.max_retries, delay)
+            if self._gate and status == 429:
+                self._gate.block(delay)  # every thread waits, not just this one
+                log.info("Groq rate limit reached; all extraction threads wait %.1fs", delay)
+            else:
+                log.warning("Groq call failed (%s); retry %d/%d in %.1fs", last, attempt + 1, self.max_retries, delay)
             self._sleep(delay)
         raise LLMError(f"Groq request failed after {self.max_retries + 1} attempts ({last})")
 
