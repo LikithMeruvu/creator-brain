@@ -87,6 +87,9 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--top", type=int, help="add the N most-viewed videos not yet in the brain")
     m.add_argument("--dry-run", action="store_true", help="only show what would be added")
     m.add_argument("--json", action="store_true")
+    tm = sub.add_parser("merge-topics", help="fold narrow topics into broader ones (pause first)")
+    tm.add_argument("--dry-run", action="store_true", help="only show the proposed groups")
+    tm.add_argument("--json", action="store_true")
     dt = sub.add_parser("dates", help="look up missing publish dates and rename those notes (pause first)")
     dt.add_argument("creator", nargs="?")
     r = sub.add_parser("retry", help="try failed videos again")
@@ -272,6 +275,12 @@ def main(argv: list[str] | None = None) -> int:
         return _emit(brain.resume(), False)
     if args.cmd == "retry":
         return _emit(brain.retry_parked(args.creator), False)
+    if args.cmd == "merge-topics":
+        res = brain.merge_topics(dry_run=args.dry_run)
+        if not j and isinstance(res, dict) and res.get("groups"):
+            for g, ms in list(res["groups"].items())[:40]:
+                print(f"  {g}  <-  {', '.join(m for m in ms if m != g)}")
+        return _emit(res, j)
     if args.cmd == "dates":
         return _emit(brain.backfill_dates(args.creator), False)
     if args.cmd == "more":

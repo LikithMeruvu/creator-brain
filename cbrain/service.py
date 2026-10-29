@@ -770,6 +770,20 @@ class Brain:
                 "message": f"Added {len(added)} video(s) to {cr.name}'s brain; they download in the background."}
 
     @_safe
+    def merge_topics(self, dry_run: bool = False) -> dict:
+        """Fold narrow topics into broader ones (LLM proposes groups of existing names; code applies them)."""
+        if self._worker_running() and not dry_run:
+            return {"error": "the background worker is running", "hint": "run `brain pause`, wait a minute, retry"}
+        llm = _mod("cbrain.think.llm").LLMClient(self.settings)
+        if not llm.available():
+            return {"error": "no Groq key", "hint": "run `brain setup` or set GROQ_API_KEY"}
+        res = _mod("cbrain.think.merge").consolidate(self.paths, self.store, self._writer(), self._index(), llm,
+                                                     dry_run=dry_run)
+        if not dry_run:
+            self._refresh_overview()
+        return res
+
+    @_safe
     def backfill_dates(self, creator: str | None = None) -> dict:
         """Look up missing publish dates (imported transcripts) through proxies and rename/relink their notes."""
         if self._worker_running():

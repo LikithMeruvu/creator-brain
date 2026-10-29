@@ -165,6 +165,27 @@ class TopicRegistry:
             self.save()
         return grouped
 
+    def merge(self, groups: dict[str, list[str]]) -> dict[str, str]:
+        """Fold member topics into a canonical one (members become aliases). Returns old name -> canonical."""
+        moved: dict[str, str] = {}
+        with self._lock:
+            for canon, members in groups.items():
+                canon = clean_topic(canon)
+                target = self._topics.setdefault(canon, {"aliases": [], "claims": []})
+                for m in members:
+                    if m == canon or m not in self._topics:
+                        continue
+                    entry = self._topics.pop(m)
+                    target["aliases"] = sorted(set(target["aliases"]) | set(entry["aliases"]) | {m})
+                    target["claims"] += [i for i in entry["claims"] if i not in target["claims"]]
+                    moved[m] = canon
+                    for a in entry["aliases"]:
+                        moved[a] = canon
+                for name in [canon, *target["aliases"]]:
+                    self._key_to_canon[topic_key(name)] = canon
+            self.save()
+        return moved
+
     def all_topics(self) -> list[str]:
         with self._lock:
             return sorted(self._topics)
