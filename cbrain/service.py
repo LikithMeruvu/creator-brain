@@ -27,7 +27,7 @@ from .jobs import JobStore, WriterLock, now_iso
 from .models import Creator, slugify
 from .paths import VaultPaths, default_vault
 
-DEFAULT_LEGACY_DB = Path("C:/Last D Backup/claude code/creators/knowledge.db")
+DEFAULT_LEGACY_DB = ""  # optional: point CBRAIN_LEGACY_DB at a v1 knowledge.db to reuse its transcripts
 PROFILE_KEYS = ("goal", "level", "age", "weight", "injuries", "equipment", "days_per_week", "diet", "notes")
 PROFILE_ALIASES = {"days": "days_per_week", "days_a_week": "days_per_week", "injury": "injuries",
                    "target": "goal", "experience": "level"}
@@ -314,8 +314,9 @@ class Brain:
             return False
 
     def _legacy_import(self, creator: Creator) -> int:
-        old = Path(os.environ.get("CBRAIN_LEGACY_DB", DEFAULT_LEGACY_DB))
-        if not old.exists():
+        legacy = os.environ.get("CBRAIN_LEGACY_DB", DEFAULT_LEGACY_DB)
+        old = Path(legacy) if legacy else None
+        if old is None or not old.exists():
             return 0
         try:
             n = int(_mod("cbrain.legacy_import").import_old_creator_brain(old, self.store, self.paths, creator) or 0)

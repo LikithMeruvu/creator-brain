@@ -54,7 +54,6 @@ def fetch_captions(video_id: str, proxy: str | None = None, timeout: int = 15) -
     # yt-dlp extract_info(download=False, proxy=proxy or "", no cookies, no config files), choose best json3 track
     # (manual en > auto en/en-orig > other), parse json3 -> Segments. Returns (transcript, info) where info has
     # title, upload_date->published "YYYY-MM-DD", duration, view_count, chapters, description.
-    # Reuse logic ideas from the old project: C:/Last D Backup/creator DB/creator_brain/subtitles.py (read-only).
 # fetch/asr.py
 def transcribe(video_id: str, settings: Settings, proxy: str | None = None) -> Transcript
     # download smallest audio (e.g. format 139 / worstaudio) via yt-dlp to a temp dir, then Groq
@@ -78,7 +77,7 @@ class FetchRunner:
 # legacy_import.py
 def import_old_creator_brain(old_db: Path, store: JobStore, paths: VaultPaths, creator: Creator) -> int
     # Read-only import of transcripts already fetched by the old project
-    # (C:/Last D Backup/claude code/creators/knowledge.db + archive). Inspect its schema read-only.
+    # (a v1 `knowledge.db` + markdown archive, path from CBRAIN_LEGACY_DB). Read-only.
     # Saved as Transcript(source="legacy_import" or original source), state FETCHED. Returns count.
 ```
 
