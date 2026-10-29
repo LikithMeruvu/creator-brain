@@ -117,7 +117,7 @@ def test_failures_ladder(vault, monkeypatch):
         raise NoCaptions("none")
 
     monkeypatch.setattr(R, "fetch_captions", fake_fetch)
-    monkeypatch.setattr(R, "transcribe", lambda vid_, s, proxy=None: asr_calls.append(vid_) or ok_transcript(vid_, "groq_whisper"))
+    monkeypatch.setattr(R, "transcribe", lambda vid_, s, proxy=None, language=None: asr_calls.append(vid_) or ok_transcript(vid_, "groq_whisper"))
     r, sink = make_runner(vault, settings(groq_api_key="gsk"))
     stats = r.run()
     assert store.get(vid(0)).state == "parked" and store.get(vid(0)).attempts == 1  # Permanent: parked at once
@@ -256,7 +256,7 @@ def test_whisper_upgrade_for_top_videos_only(vault, monkeypatch):
     queue(store, 3, views=[10, 5000, 20])        # vid1 is the top winner
     asr_calls = []
     monkeypatch.setattr(R, "fetch_captions", lambda v, p=None, timeout=15: (ok_transcript(v), {}))
-    monkeypatch.setattr(R, "transcribe", lambda v, s, proxy=None: asr_calls.append(v) or ok_transcript(v, "groq_whisper"))
+    monkeypatch.setattr(R, "transcribe", lambda v, s, proxy=None, language=None: asr_calls.append(v) or ok_transcript(v, "groq_whisper"))
     r, _ = make_runner(vault, settings(groq_api_key="gsk", whisper_upgrade_top=1))
     stats = r.run()
     assert asr_calls == [vid(1)] and stats["upgraded"] == 1

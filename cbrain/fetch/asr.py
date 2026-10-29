@@ -6,6 +6,7 @@ The Groq API key is only ever sent to api.groq.com over a direct connection (pro
 from __future__ import annotations
 
 import json
+import re
 import mimetypes
 import shutil
 import subprocess
@@ -83,9 +84,11 @@ def _multipart(fields: dict[str, str], file_field: str, filename: str, data: byt
 
 
 def groq_transcribe_file(path: Path, settings: Settings, offset: float = 0.0,
-                         max_retries: int = 3) -> tuple[list[Segment], str | None]:
-    body, ctype = _multipart(
-        {"model": settings.asr_model, "response_format": "verbose_json", "temperature": "0"},
+                         max_retries: int = 3, language: str | None = None) -> tuple[list[Segment], str | None]:
+    fields = {"model": settings.asr_model, "response_format": "verbose_json", "temperature": "0"}
+    if language:
+        fields["language"] = language  # never let Whisper guess: it mislabels fast English as other languages
+    body, ctype = _multipart(fields,
         "file", path.name, path.read_bytes())
     for attempt in range(max_retries + 1):
         req = urllib.request.Request(GROQ_URL, data=body, method="POST", headers={
@@ -128,7 +131,7 @@ def groq_transcribe_file(path: Path, settings: Settings, offset: float = 0.0,
     raise Retryable("Groq retries exhausted")
 
 
-def local_transcribe_file(path: Path) -> tuple[list[Segment], str | None]:
+def local_transcribe_file(path: Path, language: str | None = None) -> tuple[list[Segment], str | None]:
     global _whisper_model
     try:
         from faster_whisper import WhisperModel  # lazy: optional dependency
@@ -137,14 +140,22 @@ def local_transcribe_file(path: Path) -> tuple[list[Segment], str | None]:
     with _whisper_lock:
         if _whisper_model is None:
             _whisper_model = WhisperModel("small", device="auto", compute_type="int8")
-        segments, info = _whisper_model.transcribe(str(path), vad_filter=True)
+        segments, info = _whisper_model.transcribe(str(path), vad_filter=True, language=language)
         segs = [Segment(start=float(s.start), end=float(s.end), text=" ".join(s.text.split()))
                 for s in segments if s.text.strip()]
     return segs, getattr(info, "language", None)
 
 
-def transcribe(video_id: str, settings: Settings, proxy: str | None = None) -> Transcript:
+def whisper_language(language: str | None, settings: Settings) -> str:
+    """Two-letter code Whisper understands ('en-US' -> 'en'); falls back to the configured default."""
+    code = (language or settings.default_language or "en").split("-")[0].split("_")[0].lower()
+    return code if re.fullmatch(r"[a-z]{2,3}", code) else "en"
+
+
+def transcribe(video_id: str, settings: Settings, proxy: str | None = None,
+               language: str | None = None) -> Transcript:
     """Groq Whisper first (if a key exists), then local faster-whisper (if enabled)."""
+    lang_hint = whisper_language(language, settings)
     if not settings.groq_api_key and not settings.local_whisper:
         raise FetchError("no ASR available: set a Groq key or enable local_whisper")
     with tempfile.TemporaryDirectory(prefix="cbrain-asr-") as tmp:
@@ -155,7 +166,7 @@ def transcribe(video_id: str, settings: Settings, proxy: str | None = None) -> T
                 all_segs: list[Segment] = []
                 lang = None
                 for chunk, offset in split_audio(audio, tmpdir):
-                    segs, lang = groq_transcribe_file(chunk, settings, offset)
+                    segs, lang = groq_transcribe_file(chunk, settings, offset, language=lang_hint)
                     all_segs.extend(segs)
                 if all_segs:
                     return Transcript(video_id=video_id, segments=all_segs, source="groq_whisper", language=lang)
@@ -163,7 +174,7 @@ def transcribe(video_id: str, settings: Settings, proxy: str | None = None) -> T
             except FetchError:
                 if not settings.local_whisper:
                     raise
-        segs, lang = local_transcribe_file(audio)
+        segs, lang = local_transcribe_file(audio, lang_hint)
         if not segs:
             raise Retryable("local whisper returned no speech")
         return Transcript(video_id=video_id, segments=segs, source="local_whisper", language=lang)

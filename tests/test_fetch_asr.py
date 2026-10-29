@@ -166,14 +166,14 @@ def test_large_audio_split_offsets(env, monkeypatch, tmp_path):
 def test_groq_failure_falls_back_to_local(env, monkeypatch):
     monkeypatch.setattr(asr, "_direct", FakeOpener([http_err(429, 3600)]))
     from cbrain.models import Segment
-    monkeypatch.setattr(asr, "local_transcribe_file", lambda p: ([Segment(0, 1, "local")], "en"))
+    monkeypatch.setattr(asr, "local_transcribe_file", lambda p, language=None: ([Segment(0, 1, "local")], "en"))
     t = asr.transcribe("abc12345678", settings(local_whisper=True))
     assert t.source == "local_whisper" and t.segments[0].text == "local"
 
 
 def test_local_only_when_no_key(env, monkeypatch):
     from cbrain.models import Segment
-    monkeypatch.setattr(asr, "local_transcribe_file", lambda p: ([Segment(0, 1, "x")], None))
+    monkeypatch.setattr(asr, "local_transcribe_file", lambda p, language=None: ([Segment(0, 1, "x")], None))
     t = asr.transcribe("abc12345678", Settings(groq_api_key="", local_whisper=True))
     assert t.source == "local_whisper"
 
@@ -183,3 +183,12 @@ def test_local_whisper_missing_package(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "faster_whisper", None)  # forces ImportError
     with pytest.raises(FetchError):
         asr.local_transcribe_file(tmp_path / "a.m4a")
+
+
+def test_whisper_is_told_the_language():
+    """Whisper must never guess the language: it once wrote fast English as Hindi."""
+    s = Settings(groq_api_key="k", default_language="en")
+    assert asr.whisper_language(None, s) == "en"
+    assert asr.whisper_language("en-US", s) == "en"
+    assert asr.whisper_language("es", s) == "es"
+    assert asr.whisper_language("??", s) == "en"

@@ -42,6 +42,7 @@ class Settings:
     extract_fallback_models: str = "openai/gpt-oss-20b,qwen/qwen3.8-27b"  # rotated in: each has its own free quota
     llm_tpm: int = 8000                # tokens/minute budget until Groq's real limit is learned from headers
     asr_model: str = "whisper-large-v3-turbo"
+    default_language: str = "en"         # told to Whisper when YouTube doesn't say; never let it guess
     vision_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
     visual: bool = False
     cost_confirm_usd: float = 1.0       # ask before an extraction run estimated above this

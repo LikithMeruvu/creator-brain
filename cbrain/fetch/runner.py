@@ -26,6 +26,12 @@ from .sponsorblock import cut, sponsor_spans
 
 log = logging.getLogger("cbrain.fetch")
 
+
+def _lookup_meta(video_id: str, proxy: str | None) -> dict | None:
+    """Publish date/views for videos whose transcript came from audio (no page info). Patched out in tests."""
+    from ..backfill import lookup
+    return lookup(video_id, proxy)
+
 LEASE_SECONDS = 900
 
 
@@ -167,10 +173,10 @@ class FetchRunner:
                 info = e.info
                 if not asr_ok:
                     return ("park", "no captions and no ASR configured (add a Groq key or enable local_whisper, then retry)")
-                transcript = transcribe(row.id, s, proxy)
+                transcript = transcribe(row.id, s, proxy, language=(info or {}).get("language"))
             else:
                 if (transcript.source == "auto_caption" and s.groq_api_key and row.id in self._upgrade_ids):
-                    transcript = self._try_upgrade(row, transcript, proxy)
+                    transcript = self._try_upgrade(row, transcript, proxy, info.get("language") or transcript.language)
         except Blocked as e:
             return ("blocked", str(e))
         except Permanent as e:
@@ -179,6 +185,11 @@ class FetchRunner:
             return ("retry", str(e))
         except FetchError as e:
             return ("retry", str(e))
+        if not info.get("published"):  # audio-only paths can arrive without page metadata: one cheap lookup
+            try:
+                info = {**info, **(_lookup_meta(row.id, proxy) or {})}
+            except Exception:  # noqa: BLE001 - a date is nice to have, never a reason to fail the video
+                pass
         if not transcript.chapters and info.get("chapters"):
             transcript.chapters = [Chapter(start=c["start"], title=c["title"]) for c in info["chapters"]]
         if s.sponsorblock:
@@ -188,9 +199,10 @@ class FetchRunner:
                 log.warning("sponsorblock failed for %s", row.id)
         return ("ok", transcript, info)
 
-    def _try_upgrade(self, row: VideoRow, current: Transcript, proxy: str | None) -> Transcript:
+    def _try_upgrade(self, row: VideoRow, current: Transcript, proxy: str | None,
+                     language: str | None = None) -> Transcript:
         try:
-            better = transcribe(row.id, self.settings, proxy)
+            better = transcribe(row.id, self.settings, proxy, language=language)
         except FetchError as e:  # includes Blocked: the captions we already have are good enough
             log.info("whisper upgrade skipped for %s: %s", row.id, e)
             return current
