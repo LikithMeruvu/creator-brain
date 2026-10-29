@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+# local vaults and data never go to git
+vault/
+CreatorBrain/
+.brain/
+*.sqlite
+*.sqlite-*
+.env
