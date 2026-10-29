@@ -87,6 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--top", type=int, help="add the N most-viewed videos not yet in the brain")
     m.add_argument("--dry-run", action="store_true", help="only show what would be added")
     m.add_argument("--json", action="store_true")
+    dt = sub.add_parser("dates", help="look up missing publish dates and rename those notes (pause first)")
+    dt.add_argument("creator", nargs="?")
     r = sub.add_parser("retry", help="try failed videos again")
     r.add_argument("creator", nargs="?")
     sub.add_parser("worker", help="run the background worker in this window")
@@ -270,6 +272,8 @@ def main(argv: list[str] | None = None) -> int:
         return _emit(brain.resume(), False)
     if args.cmd == "retry":
         return _emit(brain.retry_parked(args.creator), False)
+    if args.cmd == "dates":
+        return _emit(brain.backfill_dates(args.creator), False)
     if args.cmd == "more":
         ids = [i for i in (args.ids or "").split(",") if i.strip()] or None
         res = brain.add_videos(args.creator, match=args.match, video_ids=ids, top=args.top, dry_run=args.dry_run)

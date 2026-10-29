@@ -770,6 +770,16 @@ class Brain:
                 "message": f"Added {len(added)} video(s) to {cr.name}'s brain; they download in the background."}
 
     @_safe
+    def backfill_dates(self, creator: str | None = None) -> dict:
+        """Look up missing publish dates (imported transcripts) through proxies and rename/relink their notes."""
+        if self._worker_running():
+            return {"error": "the background worker is running", "hint": "run `brain pause`, wait a minute, retry"}
+        slug = self._resolve(creator).slug if creator else None
+        res = _mod("cbrain.backfill").run(self.paths, self.store, self.settings, slug)
+        self._refresh_overview()
+        return res
+
+    @_safe
     def retry_parked(self, creator: str | None = None) -> dict:
         slug = self._resolve(creator).slug if creator else None
         n = self.store.unpark(slug)

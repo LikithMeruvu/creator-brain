@@ -31,7 +31,7 @@ from .paths import VaultPaths, default_vault
 
 MANIFEST_VERSION = 1
 LOG_MAX_BYTES = 5 * 1024 * 1024
-MAX_DEFERRED_WAIT = 20 * 60      # wait at most this long for a deferred (backed-off) job to become due
+MAX_DEFERRED_WAIT = 3 * 60 * 60  # keep waiting through Groq quota rests (deferred jobs) before exiting
 OVERVIEW_REFRESH_SECONDS = 300   # Home / creator notes / All Videos tables refresh this often during a run
 LOG_NAME = "cbrain.worker"
 
