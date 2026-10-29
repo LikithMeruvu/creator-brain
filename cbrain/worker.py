@@ -32,6 +32,7 @@ from .paths import VaultPaths, default_vault
 MANIFEST_VERSION = 1
 LOG_MAX_BYTES = 5 * 1024 * 1024
 MAX_DEFERRED_WAIT = 20 * 60      # wait at most this long for a deferred (backed-off) job to become due
+OVERVIEW_REFRESH_SECONDS = 300   # Home / creator notes / All Videos tables refresh this often during a run
 LOG_NAME = "cbrain.worker"
 
 log = logging.getLogger(LOG_NAME)
@@ -208,6 +209,8 @@ def write_overview(paths: VaultPaths, store: JobStore, writer, creators=None) ->
         except OSError:
             ups = []
         writer.write_creator_note(cr, counts, top, ups)
+        if hasattr(writer, "write_catalog"):
+            writer.write_catalog(cr, store.videos(cr.slug, selected_only=False))
     try:
         all_topics = sorted(json.loads(paths.topics_json.read_text(encoding="utf-8")))
     except (OSError, ValueError):
@@ -436,6 +439,16 @@ class Worker:
             while t.is_alive():
                 t.join(0.5)
 
+    def _overview_loop(self, done: threading.Event) -> None:
+        """Keep Home, creator notes and All-Videos tables live while a long run is in progress."""
+        while True:
+            try:
+                write_overview(self.paths, self.store, self.writer)
+            except Exception:  # noqa: BLE001 - a dashboard refresh must never stop the run
+                log.exception("overview refresh failed")
+            if done.wait(OVERVIEW_REFRESH_SECONDS):
+                return
+
     def _monitor_pause(self, done: threading.Event) -> None:
         while not done.is_set():
             if self.paths.pause_flag.exists():
@@ -461,6 +474,7 @@ class Worker:
             threading.Thread(target=self._safe_refresh_pool, name="proxy-refresh", daemon=True).start()
         monitor_done = threading.Event()
         threading.Thread(target=self._monitor_pause, args=(monitor_done,), name="pause-monitor", daemon=True).start()
+        threading.Thread(target=self._overview_loop, args=(monitor_done,), name="overview", daemon=True).start()
         waited = 0.0
         idle = 0
         try:

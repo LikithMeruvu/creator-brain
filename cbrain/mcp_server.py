@@ -49,6 +49,15 @@ def create_server(get_brain: Getter) -> Any:
         return call("add_creator", handle, full=full)
 
     @mcp.tool()
+    def add_videos(creator: str, match: str | None = None, video_ids: list[str] | None = None,
+                   top: int | None = None, dry_run: bool = False) -> dict[str, Any]:
+        """Add more of a creator's videos to their brain. By default a brain holds the newest 30% plus top winners;
+        every other upload is listed in the creator's '<Name> - All Videos' note. Pick by title words (match=
+        'protein diet'), explicit video_ids, or top=N most-viewed. Use dry_run=True first to show the user the
+        matches, then call again to add them. They download and get analysed in the background."""
+        return call("add_videos", creator, match=match, video_ids=video_ids, top=top, dry_run=dry_run)
+
+    @mcp.tool()
     def update_creators(creator: str | None = None) -> dict[str, Any]:
         """Check one creator (or all of them) for new videos and queue anything new. Cheap and quick; it also
         runs automatically about once a day. New material appears in search as it finishes processing."""

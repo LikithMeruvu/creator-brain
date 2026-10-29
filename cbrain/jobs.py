@@ -52,6 +52,7 @@ class VideoRow:
     last_error: str | None
     transcript_source: str | None
     priority: float
+    selected: bool = True
 
     def meta(self) -> VideoMeta:
         return VideoMeta(id=self.id, title=self.title, published=self.published,
@@ -181,6 +182,18 @@ class JobStore:
                WHERE id=?""",
             (state, attempts, error[:500], time.time() + 60 * 2 ** attempts, now_iso(), video_id))
 
+    def select_more(self, creator_slug: str, ids: list[str], priority: float = 500.0) -> list[str]:
+        """Bring catalog videos into the brain. Returns the ids that were newly selected."""
+        added = []
+        with self.tx():
+            for vid in ids:
+                cur = self.db.execute(
+                    "UPDATE videos SET selected=1, priority=?, next_try_at=0 WHERE id=? AND creator_slug=? AND selected=0",
+                    (priority, vid, creator_slug))
+                if cur.rowcount:
+                    added.append(vid)
+        return added
+
     def include_downloaded(self, creator_slug: str) -> int:
         """Select every video whose transcript is already downloaded, even outside the chosen scope."""
         return self.db.execute(
@@ -254,7 +267,8 @@ class JobStore:
     def _row(r: sqlite3.Row, state: str | None = None) -> VideoRow:
         return VideoRow(id=r["id"], creator_slug=r["creator_slug"], title=r["title"], published=r["published"],
                         duration=r["duration"], views=r["views"], state=state or r["state"], attempts=r["attempts"],
-                        last_error=r["last_error"], transcript_source=r["transcript_source"], priority=r["priority"])
+                        last_error=r["last_error"], transcript_source=r["transcript_source"], priority=r["priority"],
+                        selected=bool(r["selected"]))
 
 
 class WriterLock:

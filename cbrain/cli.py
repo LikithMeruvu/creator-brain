@@ -80,6 +80,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("pause", help="pause downloading")
     sub.add_parser("resume", help="resume downloading")
+    m = sub.add_parser("more", help="add more of a creator's videos to the brain (from the All Videos list)")
+    m.add_argument("creator")
+    m.add_argument("--match", help="words that must all appear in the title")
+    m.add_argument("--ids", help="comma-separated video ids")
+    m.add_argument("--top", type=int, help="add the N most-viewed videos not yet in the brain")
+    m.add_argument("--dry-run", action="store_true", help="only show what would be added")
+    m.add_argument("--json", action="store_true")
     r = sub.add_parser("retry", help="try failed videos again")
     r.add_argument("creator", nargs="?")
     sub.add_parser("worker", help="run the background worker in this window")
@@ -263,6 +270,13 @@ def main(argv: list[str] | None = None) -> int:
         return _emit(brain.resume(), False)
     if args.cmd == "retry":
         return _emit(brain.retry_parked(args.creator), False)
+    if args.cmd == "more":
+        ids = [i for i in (args.ids or "").split(",") if i.strip()] or None
+        res = brain.add_videos(args.creator, match=args.match, video_ids=ids, top=args.top, dry_run=args.dry_run)
+        if not j and isinstance(res, dict):
+            for v in res.get("videos", [])[:20]:
+                print(f"  - {v['title']}  {v['url']}")
+        return _emit(res, j)
     return 2
 
 

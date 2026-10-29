@@ -121,10 +121,10 @@ def test_full_run_fetches_writes_extracts_and_summarises(paths, rec):
     assert ("v0", "2026-03-01", ()) in [c for c in rec.calls["write_video_note"]]      # first write already had the date
     # end of run: update note, creator note, Home, manifest
     assert rec.calls["write_update_note"][0][:3] == ("jeremy-ethier", 3, 6)             # 3 videos, 6 new claims
-    assert rec.n("write_creator_note") == 1 and rec.n("write_home") == 1
-    home_counts = rec.calls["write_home"][0][1]["jeremy-ethier"]
+    assert rec.n("write_creator_note") >= 1 and rec.n("write_home") >= 1   # live refresh + final
+    home_counts = rec.calls["write_home"][-1][1]["jeremy-ethier"]
     assert home_counts["done"] == 3 and home_counts["built_pct"] == 100 and home_counts["failed"] == 0
-    creator_top = rec.calls["write_creator_note"][0][2]
+    creator_top = rec.calls["write_creator_note"][-1][2]
     assert creator_top == ["Protein Intake"]
     # video notes were re-rendered with topic links
     relinked = [c for c in rec.calls["write_video_note"] if c[2] == ("Protein Intake",)]

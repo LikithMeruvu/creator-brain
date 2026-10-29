@@ -738,6 +738,38 @@ class Brain:
                 else "Resumed. Nothing is waiting to be downloaded."}
 
     @_safe
+    def add_videos(self, creator: str, match: str | None = None, video_ids: list[str] | None = None,
+                   top: int | None = None, dry_run: bool = False) -> dict:
+        """Bring more of a creator's catalog into the brain: by title words, explicit ids, or top-N by views."""
+        cr = self._resolve(creator)
+        pool = [r for r in self.store.videos(cr.slug, selected_only=False) if not r.selected]
+        picked = []
+        if video_ids:
+            want = {v.strip() for v in video_ids if v and v.strip()}
+            picked += [r for r in pool if r.id in want]
+        if match:
+            words = [w for w in re.findall(r"\w+", match.lower()) if w]
+            picked += [r for r in pool if words and all(w in (r.title or "").lower() for w in words)]
+        if top:
+            picked += sorted(pool, key=lambda r: -(r.views or 0))[:top]
+        seen, unique = set(), []
+        for r in picked:
+            if r.id not in seen:
+                seen.add(r.id)
+                unique.append(r)
+        preview = [{"id": r.id, "title": r.title, "views": r.views, "url": f"https://www.youtube.com/watch?v={r.id}"}
+                   for r in unique[:50]]
+        if dry_run or not unique:
+            msg = (f"{len(unique)} video(s) match and are not in the brain yet." if unique
+                   else "No matching videos outside the brain. Check the creator's 'All Videos' note.")
+            return {"matched": len(unique), "videos": preview, "added": 0, "message": msg}
+        added = self.store.select_more(cr.slug, [r.id for r in unique])
+        started = self._ensure_worker(force=True) if added else False
+        self._refresh_overview()
+        return {"matched": len(unique), "added": len(added), "videos": preview, "worker_started": started,
+                "message": f"Added {len(added)} video(s) to {cr.name}'s brain; they download in the background."}
+
+    @_safe
     def retry_parked(self, creator: str | None = None) -> dict:
         slug = self._resolve(creator).slug if creator else None
         n = self.store.unpark(slug)

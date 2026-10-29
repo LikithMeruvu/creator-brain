@@ -343,3 +343,19 @@ def test_written_rows_do_not_respawn_worker_without_llm(brain):
 def test_doctor_wrapper(brain):
     r = brain.doctor()
     assert "issues" in r and "ok" in r
+
+
+def test_add_videos_from_catalog_by_match_and_top(tmp_path):
+    """Videos outside the default scope stay in the catalog until the user asks for them by title or views."""
+    from cbrain.jobs import JobStore
+    from cbrain.models import Creator, VideoMeta
+    store = JobStore(tmp_path / "j.sqlite")
+    store.upsert_creator(Creator("jeff", "Jeff Nippard", "@JeffNippard", "UC1"))
+    vids = [VideoMeta("a", "Best Protein Sources", views=10), VideoMeta("b", "Full Body Workout", views=99),
+            VideoMeta("c", "Protein Timing Myths", views=5), VideoMeta("d", "Leg Day", views=1)]
+    store.add_videos("jeff", vids, {"d": 1.0})
+    pool = {r.id for r in store.videos("jeff", selected_only=False) if not r.selected}
+    assert pool == {"a", "b", "c"}
+    assert store.select_more("jeff", ["a", "c"]) == ["a", "c"]
+    assert store.select_more("jeff", ["a"]) == []          # already in the brain
+    assert {r.id for r in store.videos("jeff")} == {"a", "c", "d"}
